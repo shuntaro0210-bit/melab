@@ -122,7 +122,8 @@ nav.tabs .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:re
 .stock{display:flex;flex-direction:column}
 .st{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding-block:10px;border-top:1px solid var(--line)}
 .st:first-child{border-top:0}
-.st .acts{display:flex;gap:6px;align-items:center}
+.st .acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:480px){.st{grid-template-columns:1fr}.st .acts{justify-content:flex-start}}
 .step{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);cursor:pointer}
 /* レシピ */
 details.rc{border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
@@ -571,10 +572,14 @@ const ABV={'ビール':5,'日本酒':15,'ハイボール':3.43,'ワイン':12,'�
 FMAP['ワイン']={...MMAP['＜アルコール飲料類＞ （醸造酒類） ぶどう酒 赤'],n:'ワイン'};
 FMAP['レモンサワー']={...MMAP['＜アルコール飲料類＞ （混成酒類） 缶チューハイ レモン風味'],n:'レモンサワー'};
 {const b=MMAP['＜アルコール飲料類＞ （蒸留酒類） しょうちゅう 単式蒸留しょうちゅう'];FMAP['焼酎（水割り）']=Object.fromEntries(Object.entries(b).map(([k,v])=>[k,typeof v==='number'?v/3:v]));FMAP['焼酎（水割り）'].n='焼酎（水割り）'}
+/* コンビニの商品名（「セブンのざるそば」など）は、中の「そば」に引っかけない。公式の表示どおり商品1つで扱う */
+const STORE_RE=/セブン|ｾﾌﾞﾝ|7-?11|ファミマ|ファミリーマート|ローソン|ミニストップ|デイリーヤマザキ|ヤマザキデイリー|セイコーマート|セコマ|ニューデイズ|NewDays|ポプラ|スリーエフ|コンビニ/i;
+const itU=it=>it&&it.ug>0?['個',it.ug]:unitOf(it.name);
 function findFood(name){
   if(!name) return null; name=String(name).trim();
   if(FMAP[name]) return FMAP[name];
   if(MMAP[name]) return MMAP[name];
+  if(STORE_RE.test(name)) return null;
   return FOODS.find(f=>name.includes(f.n.replace(/（.*）/,''))||(f.a||[]).some(a=>name.includes(a)))||null;
 }
 
@@ -1233,18 +1238,20 @@ function coachBigHTML(){
 }
 
 /* ===== 文字で記録（お店・商品の名前でもOK） ===== */
-function normItems(list){return list.filter(i=>i&&i.name).map(i=>{const f=findFood(String(i.name)),u=f&&unitOf(f.n),n=+i.n;if(u&&u[0]!=='ml'&&u[0]!=='cm'&&n>0&&n<50)i.g=n*u[1];return i}).map(i=>({name:String(i.name),g:Math.max(0,Math.round(+i.g||0)),per:i.per&&typeof i.per==='object'?Object.fromEntries(['k','p','f','c','fi',...NK].map(k=>[k,+i.per[k]||0])):undefined,...(+i.abv>0&&!findFood(String(i.name))?{abv:Math.min(+i.abv,60)}:{})}))}
+function normItems(list){return list.filter(i=>i&&i.name).map(i=>{const nm=String(i.name),n=+i.n;
+  if((i.prod||STORE_RE.test(nm))&&i.per&&typeof i.per==='object'&&+i.g>0){const k=n>0&&n<50?n:1;i.ug=Math.round(+i.g);i.g=i.ug*k;i.pf=1;return i}
+  const f=findFood(nm),u=f&&unitOf(f.n);if(u&&u[0]!=='ml'&&u[0]!=='cm'&&n>0&&n<50)i.g=n*u[1];return i}).map(i=>({name:String(i.name),g:Math.max(0,Math.round(+i.g||0)),...(i.pf?{pf:1,ug:i.ug}:{}),per:i.per&&typeof i.per==='object'?Object.fromEntries(['k','p','f','c','fi',...NK].map(k=>[k,+i.per[k]||0])):undefined,...(+i.abv>0&&!findFood(String(i.name))?{abv:Math.min(+i.abv,60)}:{})}))}
 function textPrompt(q){
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、');
   return `食べたもの・飲んだものの説明です：「${q}」
 これを食品ごとに分けて、量をグラムで推定してください。
-・チェーン店やコンビニ、メーカーの商品名が書いてあれば、その商品の公式の栄養成分表示に近い値にしてください（分かる範囲で。分からなければ、ふつうの1人前で推定）。その場合は、商品を1品として name に商品名、g に1個（1人前）のグラム数、per に100gあたりの値を入れてください。
+・コンビニ（セブン-イレブン・ファミリーマート・ローソンなど）やチェーン店・メーカーの商品は、材料に分けずに商品1つとして扱ってください。name は「店名＋商品名」（例：セブン-イレブン ざるそば）、prod は true、g は1個（1パック）の内容量のグラム数、n は個数、per にはその商品の公式サイト・パッケージの栄養成分表示の値を100gあたりに直して入れてください。大盛り・普通盛りなどサイズが分かればそのサイズの値にします。量や玉の数を人に聞かず、ふつうに売られている1個で決めてください。
 ・量や個数（大盛り・2杯・半分など）が書いてあれば、それに合わせてください。個数が書いてある・数えられる食べ物は n に個数を入れてください（例：ゆで卵2個→n:2）。
 ・食品は次のリストに近いものはその名前をそのまま使ってください：${names}
 ・飲みものは g に ml の数を入れ、次のリストに近ければその名前を使ってください：${DRK.map(d=>d.n).join('、')}。リストに無いお酒は abv にアルコール度数（%）を入れてください。
 ・リストに無いものは per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください。
 ・title には短い料理名（例：牛丼並・みそ汁）。
-次のJSONだけを返してください：{"title":"","items":[{"name":"","g":0,"n":0,"per":null,"abv":0}]}`;
+次のJSONだけを返してください：{"title":"","items":[{"name":"","g":0,"n":0,"prod":false,"per":null,"abv":0}]}`;
 }
 async function readText(){
   const q=$('#textLog').value.trim(), st=$('#textSt'); if(!q){st.textContent='食べたものを書いてください。';return}
@@ -1939,7 +1946,10 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041634';
+const APPVER='202610041642';
+/* アプリを開き直したとき、新しい版が出ていれば読みこみ直す（古い画面が残らないように） */
+async function checkNewVer(){if(APPVER==='dev'||!/^https?:/.test(location.protocol))return;try{const t=await (await fetch('./?nv='+Date.now(),{cache:'no-store'})).text();const m=t.match(/const APPVER='(\d+)'/);if(m&&m[1]!==APPVER){if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.update().catch(()=>{})))}location.reload()}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVer()});setTimeout(checkNewVer,1500);
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2072,7 +2082,7 @@ function renderMeals(){
     const k=Math.round(sum(es.flatMap(e=>e.items)).k);
     return `<div class="meal"><div class="hd"><b>${m}</b><span class="num small muted">${es.length?k+' kcal':'まだ'}</span></div>
     ${es.map(e=>{const op=openEntry===e.id;return `<button type="button" class="entry" data-open="${e.id}" aria-expanded="${op}"><span>${esc(e.title||e.items.map(i=>i.name).join('・'))}</span><span class="num small muted">${Math.round(sum(e.items).k)}kcal ${op?'▲':'▼'}</span></button>
-     ${op?`<div class="edit stack">${e.items.map((it,i)=>{const U=unitOf(it.name);return `<div class="item"><span class="nm">${esc(it.name)}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):Math.round(it.g)}" data-eg="${e.id}|${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${Math.round(nut(it).k)}kcal</span></div>`}).join('')}
+     ${op?`<div class="edit stack">${e.items.map((it,i)=>{const U=itU(it);return `<div class="item"><span class="nm">${esc(it.name)}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):Math.round(it.g)}" data-eg="${e.id}|${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${Math.round(nut(it).k)}kcal</span></div>`}).join('')}
       <div class="row"><label class="small" for="em-${e.id}">食事</label><select id="em-${e.id}" data-em="${e.id}">${['朝','昼','夜','間食'].map(x=>`<option${x===e.meal?' selected':''}>${x}</option>`).join('')}</select><span class="sp"></span>
       <button class="btn sm" type="button" data-mine="${e.id}">マイ料理に登録</button>
       ${delAsk===e.id?`<span class="small">消しますか？</span><button class="btn sm" type="button" data-del="${e.id}" style="color:var(--bad)">消す</button><button class="btn sm" type="button" data-delno="1">やめる</button>`:`<button class="btn sm" type="button" data-delask="${e.id}" style="color:var(--bad)">この記録を消す</button>`}</div></div>`:''}`}).join('')}</div>`}).join('');
@@ -2167,9 +2177,9 @@ async function ai(prompt,opts){if(!SAMPLE) throw {code:APP?'no_key':'unavailable
 function prompts(){
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、'); const T=targets();
   return {
-   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真に写っている食べ物を材料ごとに分け、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに近いものは、その名前をそのまま使ってください：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。次のJSONだけを返してください：{"title":"料理名","items":[{"name":"","g":0,"n":0,"per":null,"abv":0}]}`,
+   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真に写っている食べ物を材料ごとに分け（ただし、コンビニやメーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに近いものは、その名前をそのまま使ってください：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。次のJSONだけを返してください：{"title":"料理名","items":[{"name":"","g":0,"n":0,"per":null,"abv":0}]}`,
    menu:`外食のメニューの写真です。ダイエット中の人（1食の目安 ${T?Math.round(T.kcal/3):650}kcal、たんぱく質を多めにとりたい）向けに、${styleNote()?'次の条件も守ってください。'+styleNote().replace(/\n/g,'／')+'。':''}メニューから最大5品を選び、1人前の推定カロリー・たんぱく質g・脂質g・炭水化物g・食物繊維g・食塩相当量g・判定（おすすめ／ふつう／控えめに のどれか）・短い理由を付けてください。次のJSONだけを返してください：{"options":[{"name":"","kcal":0,"p":0,"f":0,"c":0,"fi":0,"s":0,"verdict":"","reason":""}]}`,
-   receipt:`買い物のレシートの写真です。食材だけを抜き出し、次のリストに近い名前はその名前を使い、量をグラムで推定してください：${names}。次のJSONだけを返してください：{"items":[{"name":"","g":0}]}`
+   receipt:`買い物のレシートの写真です。食材だけを抜き出し、次のリストに近い名前はその名前を使い、量をグラムで推定してください：${names}。コンビニのお弁当・麺・おにぎり・サラダなどの商品は、リストの名前にせず name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値（{"k":0,"p":0,"f":0,"c":0,"fi":0,"s":0}）を入れてください。次のJSONだけを返してください：{"items":[{"name":"","g":0,"n":0,"prod":false,"per":null}]}`
   }[mode];
 }
 async function read(useDemo){
@@ -2235,9 +2245,9 @@ function renderResult(){
   const items=pending.items||[];
   const t=sum(items);
   box.innerHTML=`<h3>${mode==='meal'?esc(pending.title||'読み取った食事'):'買ったもの'}</h3>${mode==='meal'&&pending.cook&&pending.cook.self&&pending.cook.all&&pending.cook.n>1?`<p class="small muted" style="margin:0">作った全部を${pending.cook.n}人分で割った、あなたの1人分です。</p>`:''}
-  <div class="items">${items.map((it,i)=>{const f=findFood(it.name);const unit=f&&f.u&&mode==='receipt'?`約${r1(it.g/f.u[1])}${f.u[0]}`:'';
-   const U=unitOf(it.name);
-   return `<div class="item"><span class="nm">${esc(f?f.n:it.name)}${f?'':'<span class="small muted">（AI推定）</span>'}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>`}).join('')}</div>
+  <div class="items">${items.map((it,i)=>{const f=it.pf?null:findFood(it.name);const unit=f&&f.u&&mode==='receipt'?`約${r1(it.g/f.u[1])}${f.u[0]}`:'';
+   const U=itU(it);
+   return `<div class="item"><span class="nm">${esc(f?f.n:it.name)}${f?'':`<span class="small muted">${it.pf?'（公式の表示より）':'（AI推定）'}</span>`}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>`}).join('')}</div>
   ${mode==='meal'?`<div class="tot num"><b>${Math.round(t.k)} kcal</b><span>たんぱく質 ${r1(t.p)}g</span><span>脂質 ${r1(t.f)}g</span><span>炭水化物 ${r1(t.c)}g</span><span>食物繊維 ${r1(t.fi)}g</span><span>塩分 ${r1(t.s)}g</span>${t.alc>=1?`<span>純アルコール ${Math.round(t.alc)}g</span>`:''}</div>`:''}
   ${mode==='meal'?cookQHTML():''}
   ${mode==='meal'?'<label class="small row" style="gap:8px"><input type="checkbox" id="saveMy"> マイ料理にも登録する（次から「食べた」をワンタップ。よく買う商品にも）</label>':''}
@@ -2261,6 +2271,7 @@ const RICE_RE=/^(お?米|お?こめ|白米|精白米|無洗米)$/, RICE='お米�
 function riceFood(){if(!FMAP[RICE]){const m=MMAP['こめ ［水稲穀粒］ 精白米 うるち米'];if(m)FMAP[RICE]={...m,n:RICE}}return FMAP[RICE]}
 function stUnits(){riceFood();if(RICE_RE.test($('#stName').value.trim())){riceFood();$('#stUnit').innerHTML=[['p5000','袋（5kg）'],['p10000','袋（10kg）'],['p2000','袋（2kg）'],['合','合（1合≒150g）'],['kg','kg'],['g','g']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');stPrev();return}
   const f=findFood($('#stName').value.trim()),u=f&&unitOf(f.n),sel=$('#stUnit'),cur=sel.value,nm=f&&f.n;
+  if(STORE_RE.test($('#stName').value)){sel.innerHTML='<option value="個">個（1パック）</option><option value="g">g</option>';stPrev();return}
   const opts=nm&&LIQS.includes(nm)?[['b500','本（500ml）'],['b1000','本（1L）'],['b300','本（300ml）'],['b150','本（150ml）'],['ml','ml'],['大さじ','大さじ'],['小さじ','小さじ']]
    :nm&&SPOON[nm]?[...(PACKS[nm]||[]).map(x=>['p'+x,`袋・本（${x>=1000?x/1000+'kg':x+'g'}）`]),['g','g'],['大さじ','大さじ'],['小さじ','小さじ']]
    :u?(u[0]==='ml'?[['ml','ml'],['g','g']]:[[u[0],`${u[0]}（1${u[0]}≒${u[1]}g）`],['g','g']]):[...PIECE.map(p=>[p,p]),['g','g'],['ml','ml']];
@@ -2271,6 +2282,12 @@ async function stAddDo(){
   if(!(v>0)||v>stMax(un)){toast(`数が大きすぎます（${stMax(un)}まで）。打ち直してください`);return}
   if(RICE_RE.test(n)){riceFood();const g=un[0]==='p'?v*+un.slice(1):un==='合'?v*150:un==='kg'?v*1000:v;undoable('お米を在庫に入れました',()=>{addStock(RICE,g,{n:'合',g:150});save();renderStock()});$('#stName').value='';$('#stG').value='';stUnits();return}
   const f=findFood(n),u=f&&unitOf(f.n),nm=f&&f.n;let per=null;
+  if(STORE_RE.test(n)&&un==='個'){btn.disabled=true;btn.textContent='公式の量と栄養を調べています…';let r=null;
+    try{r=await ai(`コンビニの商品「${n}」の、公式サイト・パッケージに書いてある1個の内容量（g）と、栄養成分表示を100gあたりに直した値を答えてください。大盛り・普通などが名前にあればそのサイズ。次のJSONだけ：{"name":"店名＋正式な商品名","g":数値,"per":{"k":0,"p":0,"f":0,"c":0,"fi":0,"s":0}}`)}catch(e){}
+    finally{btn.disabled=false;btn.textContent='在庫に追加'}
+    const pg=r&&+r.g>0&&+r.g<3000?Math.round(+r.g):300, ok=r&&r.per&&typeof r.per==='object', pp=ok?Object.fromEntries(['k','p','f','c','fi','s'].map(k=>[k,+r.per[k]||0])):null, nn=ok&&r.name?String(r.name).slice(0,40):n;
+    undoable(`${nn}を在庫に入れました`,()=>{addStock(nn,v*pg,{n:'個',g:pg},pp);save();renderStock()});
+    if(!ok)toast('AIにつながらなかったので、量は目安で入れました');$('#stName').value='';$('#stG').value='';stUnits();return}
   if(nm&&SPOON[nm]){const d=SPOON[nm]/5, ml=un[0]==='b'?v*+un.slice(1):un==='ml'?v:un==='大さじ'?v*15:un==='小さじ'?v*5:null;
     const g=ml!=null?ml*d:un[0]==='p'?v*+un.slice(1):v;
     undoable(`${n}を在庫に入れました`,()=>{addStock(n,g,LIQS.includes(nm)?{n:'ml',g:d}:null);save();renderStock()});$('#stName').value='';$('#stG').value='';stUnits();return}
@@ -2285,21 +2302,24 @@ async function stAddDo(){
 const stMax=un=>un==='g'||un==='ml'?99999:999;
 function stPrev(){const v=$('#stG').value,el=$('#stPrev'),un=$('#stUnit'),o=un.options[un.selectedIndex];if(!v){el.hidden=true;return}
   const big=!(+v>0)||+v>stMax(un.value);el.hidden=false;el.style.color=big?'var(--bad)':'var(--ink)';el.textContent=big?`数が大きすぎます（${stMax(un.value)}まで）`:`入れる量：${+v} ${o?o.textContent.replace(/（.*$/,''):''}`}
+let stEdit=null;
+const stU=s=>s.pu&&s.pu.g>0?[s.pu.n,s.pu.g]:unitOf(s.name)||['g',1];
 function renderStock(){
   const L=$('#stockList');
   if(!S.stock.length){L.innerHTML='<p class="small muted">まだ何もありません。レシートを撮るか、下から追加してください。</p>';return}
-  L.innerHTML=S.stock.map(s=>`<div class="st"><div style="min-width:0"><b>${esc(s.name)}</b><div class="small muted num">${fmtAmt(s.name,s.g,s.pu)}</div></div>
-   <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button><button class="btn sm" type="button" data-use="${s.id}">今日使う</button><button class="step" type="button" data-stdel="${s.id}" aria-label="${esc(s.name)}を消す" title="消す" style="color:var(--bad)">✕</button></div></div>`).join('')+`<div class="row" style="justify-content:flex-end;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sm" type="button" data-stclear="1" style="color:var(--bad)">冷蔵庫を全部空にする</button></div>`;
+  L.innerHTML=S.stock.map(s=>{const U=stU(s),cnt=s.g/U[1];return `<div class="st"><div style="min-width:0"><b>${esc(s.name)}</b><div class="small muted num" style="overflow-wrap:anywhere">${fmtAmt(s.name,s.g,s.pu)}</div></div>
+   <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button><button class="btn sm" type="button" data-use="${s.id}">今日使う</button><button class="btn sm" type="button" data-stedit="${s.id}">直す</button><button class="btn sm" type="button" data-stdel="${s.id}" style="color:var(--bad)">消す</button></div>
+   ${stEdit===s.id?`<div class="row" style="grid-column:1/-1;gap:6px;flex-wrap:nowrap"><span class="small" style="flex:none">今ある量</span><input type="number" inputmode="decimal" min="0" max="${stMax(U[0])}" step="any" id="stEditV" value="${cnt>stMax(U[0])||!isFinite(cnt)?'':r1(cnt)}" placeholder="数" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:7px 10px;font-size:18px;font-weight:700;text-align:center"><span style="flex:none">${esc(U[0])}</span><button class="btn sm pri" type="button" data-stsave="${s.id}">決定</button></div>`:''}</div>`}).join('')+`<div class="row" style="justify-content:flex-end;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sm" type="button" data-stclear="1" style="color:var(--bad)">冷蔵庫を全部空にする</button></div>`;
 }
-function addStock(name,g,pu){
-  const f=findFood(name); const n=f?f.n:name;
-  const ex=S.stock.find(s=>s.name===n); if(ex){ex.g+= +g;if(pu&&!ex.pu)ex.pu=pu} else S.stock.push({id:uid(),name:n,g:+g,d:TODAY,...(pu?{pu}:{})});
+function addStock(name,g,pu,per){
+  const f=per?null:findFood(name); const n=f?f.n:name;
+  const ex=S.stock.find(s=>s.name===n); if(ex){ex.g+= +g;if(pu&&!ex.pu)ex.pu=pu;if(per&&!ex.per)ex.per=per} else S.stock.push({id:uid(),name:n,g:+g,d:TODAY,...(pu?{pu}:{}),...(per?{per}:{})});
 }
 function useStock(id,log){
   const s=S.stock.find(x=>x.id===id); if(!s) return;
   const f=findFood(s.name); const g=Math.min(s.g,s.pu?(s.pu.n==='ml'?15*s.pu.g:s.pu.g):SPOON[s.name]?SPOON[s.name]*3:f&&f.u?f.u[1]:100); /* 調味料は大さじ1ずつ */
   s.g-=g; if(s.g<=0.5) S.stock=S.stock.filter(x=>x.id!==id);
-  if(log){addLog(mealNow(),`${s.name}（在庫から）`,[{name:s.name,g}])}
+  if(log){addLog(mealNow(),`${s.name}（在庫から）`,[{name:s.name,g,...(s.per?{per:s.per,pf:1,ug:s.pu&&s.pu.g}:{})}])}
   save();renderStock();
 }
 
@@ -2474,7 +2494,7 @@ function showRecs(){
 function bind(){
   $$('.tab').forEach(b=>b.addEventListener('click',()=>go(b.dataset.v)));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-cook],[data-rt]');if(!t)return;
+    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-cook],[data-rt]');if(!t)return;
     if(t.dataset.plan){planShift++;renderHome()}
     if(t.dataset.pe){const T=targets(),d=S.ans.deep,k=['bf','lunch','dn'][+t.dataset.pe],x=planAll(T,d,dayNum()+planShift)[+t.dataset.pe];if(x&&x.it){const ml={bf:'朝',lunch:'昼',dn:'夜'}[k];if(x.it.cook)useFromStock(x.it.ing.map(([name,g])=>({name,g})));addLog(ml,x.it.n,x.it.ing.map(([name,g])=>({name,g})));toast(`${x.it.n}を記録しました`)}}
     if(t.dataset.go) go(t.dataset.go);
@@ -2491,6 +2511,10 @@ function bind(){
     if(t.dataset.eat){const o=pending.options[+t.dataset.eat];go('home');undoable(`${o.name}を記録しました`,()=>addLog(mealNow(),o.name,[{name:o.name,g:100,per:{k:o.kcal,p:o.p,f:o.f||0,c:o.c||0,fi:o.fi||0,s:o.s||0}}]))}
     if(t.dataset.use){const st=S.stock.find(x=>x.id===t.dataset.use);undoable(`${st?st.name:''}を1つ使って、記録しました`,()=>useStock(t.dataset.use,true))}
     if(t.dataset.stdel){const st=S.stock.find(x=>x.id===t.dataset.stdel);undoable(`${st?st.name:''}を消しました`,()=>{S.stock=S.stock.filter(x=>x.id!==t.dataset.stdel);save();renderStock()})}
+    if(t.dataset.stedit){stEdit=stEdit===t.dataset.stedit?null:t.dataset.stedit;renderStock();const i=$('#stEditV');if(i){i.focus();i.select()}}
+    if(t.dataset.stsave){const st=S.stock.find(x=>x.id===t.dataset.stsave),U=st&&stU(st),v=+$('#stEditV').value;if(!st)return;
+      if($('#stEditV').value===''||!(v>=0)){toast('数を入れてください');return}if(v>stMax(U[0])){toast(`数が大きすぎます（${stMax(U[0])}まで）`);return}
+      stEdit=null;undoable(v===0?`${st.name}を消しました`:`${st.name}を${r1(v)}${U[0]}に直しました`,()=>{if(v===0)S.stock=S.stock.filter(x=>x.id!==st.id);else st.g=v*U[1];save();renderStock()})}
     if(t.dataset.stclear){undoable('冷蔵庫を空にしました',()=>{S.stock=[];save();renderStock()})}
     if(t.dataset.dec){const st=S.stock.find(x=>x.id===t.dataset.dec);undoable(`${st?st.name:''}を1つへらしました`,()=>useStock(t.dataset.dec,false))}
     if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;undoable(`${r.n}を記録しました（在庫からも引きました）`,()=>{useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})))});renderRecipes()}
@@ -2514,7 +2538,7 @@ function bind(){
     if(e.target.dataset.ug!==undefined){pending.use[+e.target.dataset.ug].g=(+e.target.value||0)*(+e.target.dataset.u||1);renderResult()}});
   $('#result').addEventListener('click',e=>{if(e.target.id!=='commit')return;
     if(mode==='meal'){const day=$('#mealDate').value||TODAY;if(pending.cook&&pending.cook.self&&pending.use){useFromStock(pending.use.filter(u=>u.on));const k=pending.use.filter(u=>u.on).length;if(k)setTimeout(()=>toast(`在庫から${k}品へらしました`),2700)}addLog($('#mealSel').value,pending.title||'写真の食事',pending.items.filter(i=>i.g>0),day);if($('#saveMy')&&$('#saveMy').checked){S.my=S.my||[];S.my.push({id:uid(),name:pending.title||pending.items.map(i=>i.name).join('・'),items:JSON.parse(JSON.stringify(pending.items.filter(i=>i.g>0)))});save();renderMy()}toast(day===TODAY?'今日の記録に入れました':`${+day.slice(5,7)}/${+day.slice(8)}の記録に入れました`);if(!queue.length)go('home')}
-    else{pending.items.forEach(i=>i.g>0&&addStock(i.name,i.g));save();toast('在庫に入れました');go('stock')}
+    else{pending.items.forEach(i=>i.g>0&&addStock(i.name,i.g,i.pf&&i.ug?{n:'個',g:i.ug}:null,i.pf?i.per:null));save();toast('在庫に入れました');go('stock')}
     $('#result').hidden=true;$('#snapStatus').textContent='';if(queue.length)nextPhoto();else{$('#prev').hidden=true;photo=null;$('#photo').value=''}});
   $$('.seg button').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
   $('#stockPick').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;S.stockMode=c.dataset.sm==='on'?true:c.dataset.sm==='off'?false:null;save();$$('#stockPick .chip').forEach(x=>x.setAttribute('aria-pressed',x===c));renderHome();toast(stockOn()?'在庫の管理を使います':'在庫の管理を使いません')});
@@ -2665,5 +2689,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041634').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041642').catch(()=>{}));</script>
 </body></html>
