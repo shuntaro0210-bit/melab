@@ -500,13 +500,6 @@ header.top .in{padding-block:12px}
     <h3>記録の保存先</h3>
     <p class="status" id="saveStatus">確認中…</p>
   </div>
-  <div class="stack" style="gap:8px">
-    <h3>記録の引っ越し・控え</h3>
-    <p class="small muted" style="margin:0">claude.ai の版とスマホのアプリの版で、記録を移せます。機種変更の前の控えにも。体型の写真は移りません。</p>
-    <div><button class="btn sm" type="button" id="expBtn">記録を書き出す（コピー）</button></div>
-    <textarea id="impTxt" class="inp" rows="2" placeholder="書き出した文字をここに貼り付け" style="width:100%;resize:vertical"></textarea>
-    <div class="row"><button class="btn sm" type="button" id="impBtn">貼り付けた記録を読み込む</button><span class="small muted" id="impSt" aria-live="polite"></span></div>
-  </div>
   <div class="stack">
     <h3>あなたのコーチ</h3>
     <div class="chips" id="coachPick"><button type="button" class="chip" data-c="f">女性のコーチ</button><button type="button" class="chip" data-c="m">男性のコーチ</button></div>
@@ -534,7 +527,7 @@ header.top .in{padding-block:12px}
   </div>
   <div class="stack">
     <h3>データ</h3>
-    <div class="row"><button class="btn" id="clearAll" type="button">記録をすべて消す</button><button class="btn" id="loadSample" type="button">見本を見る（記録は消えません）</button></div>
+    <div class="row"><button class="btn" id="clearAll" type="button">記録をすべて消す</button></div>
     <div class="row" id="clearConfirm" hidden><span class="small">本当に消しますか？元に戻せません。</span><button class="btn sm" id="clearYes" type="button" style="color:var(--bad)">消す</button><button class="btn sm" id="clearNo" type="button">やめる</button></div>
   </div>
   <p class="note">カロリー・栄養の数字は、文部科学省「日本食品標準成分表（八訂）増補2023年」から引用しています（約2,500品）。「1杯」「1個」などのグラム数と、みそ汁・ハイボールの数字は、組み合わせで計算した目安です。医療のアドバイスではありません。持病のある人は医師に相談してください。</p>
@@ -1784,7 +1777,8 @@ let S=null;
 function load(){try{const t=localStorage.getItem(KEY);return t?JSON.parse(t):null}catch(e){return null}}
 let saveT=null,saving=false,dirty=false;
 function save(){
-  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+  try{const old=load(); if(S.sample&&old&&!old.sample) {} else localStorage.setItem(KEY,JSON.stringify(S));
+    if(!S.sample){const B=JSON.parse(localStorage.getItem(KEY+'-bak')||'{}');if(!B[TODAY]){B[TODAY]=JSON.stringify(S);Object.keys(B).sort().slice(0,-3).forEach(k=>delete B[k]);localStorage.setItem(KEY+'-bak',JSON.stringify(B))}}}catch(e){}
   if(DOC&&!S.sample){dirty=true;clearTimeout(saveT);saveT=setTimeout(flush,800)}
 }
 async function flush(){
@@ -1939,7 +1933,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041609';
+const APPVER='202610041616';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2538,13 +2532,7 @@ function bind(){
     t.disabled=true;try{await sendFb({kind:'ask'+step,stars:askStar,text:text.trim(),screen:'home'});S['asked'+step]=true;if(step===7)S.asked3=true;askStar=0;save();renderAsk();toast('ありがとう！コーチに伝えたよ')}catch(err){t.disabled=false;toast(aiMsg(err))}});$('#pushTest').addEventListener('click',pushTestSend);$('#pushOff').addEventListener('click',pushDisable);
   $('#pushItems').addEventListener('change',e=>{const N=notifOf(),c=e.target.closest('[data-nk]'),t=e.target.closest('[data-nt]');if(c)N[c.dataset.nk].on=c.checked;if(t&&t.value)N[t.dataset.nt].t=t.value;save();if(S.pushOn)pushSync().catch(()=>{})});
   $('#gKeySave').addEventListener('click',()=>{const v=$('#gKey').value.trim();try{v?localStorage.setItem(GKEY,v):localStorage.removeItem(GKEY)}catch(e){}$('#gKey').value='';appAI();toast(v?'キーを保存しました':'キーを消しました')});
-  $('#expBtn').addEventListener('click',()=>{const t='MELAB1:'+JSON.stringify(S);const done=()=>toast('記録をコピーしました。もう一方の版の設定で貼り付けてください');
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done).catch(()=>{$('#impTxt').value=t;$('#impTxt').select();toast('下の欄の文字を全部コピーしてください')});else{$('#impTxt').value=t;$('#impTxt').select();toast('下の欄の文字を全部コピーしてください')}});
-  let impAsk=false;
-  $('#impBtn').addEventListener('click',()=>{const raw=$('#impTxt').value.trim().replace(/^MELAB1:/,'');let st;try{st=JSON.parse(raw)}catch(e){$('#impSt').textContent='読み込めませんでした。書き出した文字を全部貼り付けてください';return}
-    if(!st||typeof st!=='object'||!st.logs){$('#impSt').textContent='MeLabの記録ではないようです';return}
-    if(!impAsk){impAsk=true;$('#impBtn').textContent='今の記録を上書きします。もう一度押すと読み込み';return}
-    impAsk=false;$('#impBtn').textContent='貼り付けた記録を読み込む';S=st;S.sample=false;save();$('#impTxt').value='';$('#impSt').textContent='読み込みました';renderAll();toast('記録を読み込みました')});
+
   $('#treCard').addEventListener('click',e=>{const c=e.target.closest('[data-tre]');if(!c)return;const [a,h]=c.dataset.tre.split('|').map(Number);S.tre={s:a,h};save();renderTre();if(S.pushOn)pushSync().catch(()=>{})});
   setInterval(()=>{if(!$('#v-home').hidden)renderTre()},60000);
   $('#tdeeCard').addEventListener('click',e=>{const b=e.target.closest('[data-tdee]');if(!b)return;if(b.dataset.tdee==='on'){const R=realTdee();if(R&&R.real)S.ans.tdeeReal=R.real;toast('目安を、あなたの本当の消費に合わせました')}else{delete S.ans.tdeeReal;toast('計算式の目安に戻しました')}save();renderHome();renderFuture()});
@@ -2606,7 +2594,7 @@ function bind(){
   $('#clearAll').addEventListener('click',()=>$('#clearConfirm').hidden=false);
   $('#clearNo').addEventListener('click',()=>$('#clearConfirm').hidden=true);
   $('#clearYes').addEventListener('click',()=>{S=emptyState();save();$('#settings').close();renderHome();toast('記録を消しました')});
-  $('#loadSample').addEventListener('click',()=>{S=sampleState();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}$('#settings').close();renderHome();go('home');toast('見本を表示しています。「自分の記録に戻る」で戻れます')});
+
 }
 /* ===== 起動 ===== */
 S=load()||sampleState();
@@ -2618,7 +2606,7 @@ function appAI(){
   $('#pushBox').hidden=false; renderPush(); $('#statsBox').hidden=!canFb(); $('#statsOk').checked=S.statsOk===true; const fb=$('#fbBtn'); if(fb) fb.hidden=!canFb();
 }
 async function connect(){
-  if(APP){appAI();renderAsk();track('open');if(S.pushOn)pushSync().catch(()=>{});saveMsg('このスマホの中だけに保存しています。機種変更の前は「記録を書き出す」で控えを取ってください。');return}
+  if(APP){appAI();renderAsk();track('open');if(S.pushOn)pushSync().catch(()=>{});saveMsg('このスマホの中に保存しています。');return}
   const use=window.claude&&window.claude.use?n=>window.claude.use(n).catch(()=>null):async()=>null;
   const [sm,db,user]=await Promise.all([use('sample'),use('db'),use('user')]);
   SAMPLE=sm;
@@ -2647,5 +2635,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041609').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041616').catch(()=>{}));</script>
 </body></html>
