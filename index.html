@@ -228,7 +228,8 @@ header.top .in{padding-block:12px}
 .big2{font-family:var(--display);font-size:1.9rem;font-weight:700;line-height:1.1}
 /* 2026-10-04 基本だけにする：外した機能は画面に出さない */
 .simple #checkupCard,.simple #photoBox,.simple #shareCard,.simple #badgeCard,.simple #typeCard,.simple #weekWrap,.simple #tdeeCard,
-.simple #craveBtn,.simple #drinkBox,.simple #cookBox,.simple .seg,.simple #stockSet,.simple [data-ask="冷蔵庫の残りで今日の晩ごはんを考えて"],.simple .tab[data-v="stock"]{display:none!important}
+.simple #craveBtn,.simple #drinkBox,.simple [data-mode="menu"]{display:none!important}
+.simple .seg{grid-template-columns:repeat(2,1fr)}
 nav.tabs .in{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:1fr}
 </style>
 
@@ -1369,7 +1370,7 @@ ${cd?`【体調】${cd}\n`:''}${(()=>{const L=ckSorted(),c=L[L.length-1];return 
 let chatBusy=false;
 function renderChat(){
   const L=S.chat||[], el=$('#chatLog'); if(!el) return;
-  el.innerHTML=L.length?L.map(m=>`<div class="msg ${m.r==='u'?'me':'co'}">${m.r==='u'?'':`<span class="face sm">${coachSVG(S.coach||'f',m.t==='…'?'think':'')}</span>`}<p>${esc(m.t)}</p></div>`).join(''):`<p class="small muted" style="margin:0">あなたの記録・目安・体調を全部わかった上で答えます。下の例をタップしても聞けます。</p>`;
+  el.innerHTML=L.length?L.map(m=>`<div class="msg ${m.r==='u'?'me':'co'}">${m.r==='u'?'':`<span class="face sm">${coachSVG(S.coach||'f',m.t==='…'?'think':'')}</span>`}<p>${esc(m.t)}</p></div>`).join(''):`<p class="small muted" style="margin:0">あなたの記録・目安・冷蔵庫・体調を全部わかった上で答えます。下の例をタップしても聞けます。</p>`;
   el.scrollTop=el.scrollHeight;
 }
 async function askCoach(q){
@@ -1937,7 +1938,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041618';
+const APPVER='202610041620';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2186,12 +2187,11 @@ async function read(useDemo){
 /* 在庫の管理を使うか：実家暮らし（作ってもらう人）や料理しない人は使わない。設定で変えられる */
 const SIMPLE=true; document.documentElement.classList.toggle('simple',SIMPLE);
 function stockOn(){
-  if(SIMPLE) return false;
   if(S.stockMode===true||S.stockMode===false) return S.stockMode;
   if(!S.ans) return true; const w=whoOf(); return w==='solo'||w==='cookfor';
 }
 
-function applyStockMode(){const on=stockOn();$('[data-v="stock"]').hidden=!on;$('[data-mode="receipt"]').hidden=!on;$('#cookBox').hidden=!on||mode!=='meal';if(!on&&mode==='receipt')setMode('meal')}
+function applyStockMode(){const on=stockOn();$('[data-v="stock"]').hidden=!on;$('[data-mode="receipt"]').hidden=!on;$('#cookBox').hidden=!on||mode!=='meal';if(!on&&mode==='receipt')setMode('meal');if(SIMPLE)$('.seg').hidden=!on}
 function stockOf(name){const f=findFood(name);return S.stock.find(x=>x.name===name||(f&&x.name===f.n))||null}
 /* 自分で作った？何人分？写真は？ → 自分の1人分と、在庫から引く量を出す */
 function applyCook(){
@@ -2641,5 +2641,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041618').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041620').catch(()=>{}));</script>
 </body></html>
