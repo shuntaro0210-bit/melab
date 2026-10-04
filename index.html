@@ -197,7 +197,7 @@ dialog .in{padding:18px 16px;display:flex;flex-direction:column;gap:14px}
 .ax .fill{position:absolute;top:0;bottom:0;border-radius:4px;background:var(--accent)}
 .mcard{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px}
 .mcard.pick{border-color:var(--accent);background:var(--accent-soft)}
-.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:.9rem;z-index:20;max-width:calc(100% - 32px)}
+.toast{display:flex;align-items:center;gap:4px;position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:.9rem;z-index:20;max-width:calc(100% - 32px)}
 .note{font-size:.8rem;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px}
 @media (prefers-reduced-motion:no-preference){.ring circle.v{transition:stroke-dashoffset .6s ease}.bar .fill{transition:width .5s ease}}
 @media (max-width:360px){.hero{grid-template-columns:1fr;justify-items:center}}
@@ -476,7 +476,7 @@ nav.tabs .in{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:
 
 <!-- 設定 -->
 <dialog id="settings"><div class="in">
-  <h2>設定</h2>
+  <div class="row"><h2 style="flex:1;min-width:0">設定</h2><button class="btn sm" type="button" onclick="this.closest('dialog').close()">閉じる</button></div>
   <div class="stack">
     <h3>写真を読むAI</h3>
     <p class="small muted" id="aiDesc">Claude が写真を読みます。あなたのClaudeのプランの使用量を使うので、キーや追加の登録はいりません。最初の1回だけ「使っていいか」の確認が出ます。</p>
@@ -533,7 +533,7 @@ nav.tabs .in{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:
   <div class="stack">
     <h3>データ</h3>
     <div class="row"><button class="btn" id="clearAll" type="button">記録をすべて消す</button></div>
-    <div class="row" id="clearConfirm" hidden><span class="small">本当に消しますか？元に戻せません。</span><button class="btn sm" id="clearYes" type="button" style="color:var(--bad)">消す</button><button class="btn sm" id="clearNo" type="button">やめる</button></div>
+    <div class="row" id="clearConfirm" hidden><span class="small">本当に消しますか？（消したあと7秒間は「元に戻す」で戻せます）</span><button class="btn sm" id="clearYes" type="button" style="color:var(--bad)">消す</button><button class="btn sm" id="clearNo" type="button">やめる</button></div>
   </div>
   <p class="note">カロリー・栄養の数字は、文部科学省「日本食品標準成分表（八訂）増補2023年」から引用しています（約2,500品）。「1杯」「1個」などのグラム数と、みそ汁・ハイボールの数字は、組み合わせで計算した目安です。医療のアドバイスではありません。持病のある人は医師に相談してください。</p>
   <div class="row"><span class="sp"></span><button class="btn" id="closeSettings" type="button">閉じる</button></div>
@@ -1938,7 +1938,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041620';
+const APPVER='202610041626';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2004,6 +2004,9 @@ async function pushDisable(){try{const sub=await pushSub();if(sub){await pushPos
 
 /* ===== 画面 ===== */
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let undoSnap=null;
+function undoable(msg,fn){const snap=JSON.stringify(S);fn();undoSnap=snap;const t=$('#toast');t.innerHTML='';const sp=document.createElement('span');sp.textContent=msg;const b=document.createElement('button');b.type='button';b.id='undoBtn';b.className='btn sm';b.textContent='元に戻す';b.style.marginLeft='10px';t.append(sp,b);t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>{t.hidden=true;undoSnap=null},7000)}
+function doUndo(){if(!undoSnap)return;S=JSON.parse(undoSnap);undoSnap=null;save();renderAll();const v=curView();if(v==='future')renderFuture();if(v==='stock'){renderStock();renderShop()}if(v==='snap'){renderMy();renderRecent()}toast('元に戻しました')}
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,m.length>30?5000:2600)}
 function go(v){
   $$('main>section').forEach(s=>s.hidden=s.id!=='v-'+v);
@@ -2016,7 +2019,9 @@ function go(v){
 }
 function renderHome(){
   const d=new Date();$('#today').textContent=`${d.getMonth()+1}月${d.getDate()}日`;
-  $('#sampleBanner').hidden=!S.sample;$('#demoBtn').hidden=!S.sample;
+  $('#sampleBanner').hidden=!(S.sample||!S.ans);
+  $('#sampleBanner p').innerHTML=S.sample?'<b>見本のデータを表示中。</b>数字はすべて例です。':'<b>まずは2分の診断から。</b>あなたに合う1日の目安と食べ方が出ます。';
+  $('#startOwn').textContent=S.sample?(REAL?'自分の記録に戻る':'自分で始める'):'診断する';$('#demoBtn').hidden=!S.sample;
   const T=targets(), t=dayTotal(TODAY);
   $('#kcalNow').textContent=Math.round(t.k);
   $('#kcalOf').textContent=T?`/ ${T.kcal} kcal`:'/ 診断すると出ます';
@@ -2261,13 +2266,13 @@ async function stAddDo(){
   const f=findFood(n),u=f&&unitOf(f.n),nm=f&&f.n;let per=null;
   if(nm&&SPOON[nm]){const d=SPOON[nm]/5, ml=un[0]==='b'?v*+un.slice(1):un==='ml'?v:un==='大さじ'?v*15:un==='小さじ'?v*5:null;
     const g=ml!=null?ml*d:un[0]==='p'?v*+un.slice(1):v;
-    addStock(n,g,LIQS.includes(nm)?{n:'ml',g:d}:null);save();renderStock();$('#stName').value='';$('#stG').value='';stUnits();return}
+    undoable(`${n}を在庫に入れました`,()=>{addStock(n,g,LIQS.includes(nm)?{n:'ml',g:d}:null);save();renderStock()});$('#stName').value='';$('#stG').value='';stUnits();return}
   if(un==='g'||un==='ml') per=1; else if(u&&u[0]===un) per=u[1];
   else{btn.disabled=true;btn.textContent='1'+un+'の重さを調べています…';
     try{const r=await ai(`食材「${n}」の「1${un}」は、ふつう何グラムですか（日本のスーパーで売っている一般的な大きさ・中身の重さ）。次のJSONだけを返してください：{"g":数値}`);if(+r.g>0&&+r.g<5000){per=+r.g;toast(`1${un}＝約${Math.round(per)}gで入れました`)}}catch(e){}
     finally{btn.disabled=false;btn.textContent='在庫に追加'}
     if(!per){per=GEN[un]||100;toast(`1${un}＝約${per}gで入れました（AIにつながらなかったので目安）`)}}
-  addStock(n,v*per,un==='g'||un==='ml'||(u&&u[0]===un)?null:{n:un,g:per});save();renderStock();$('#stName').value='';$('#stG').value='';stUnits();
+  undoable(`${n}を在庫に入れました`,()=>{addStock(n,v*per,un==='g'||un==='ml'||(u&&u[0]===un)?null:{n:un,g:per});save();renderStock()});$('#stName').value='';$('#stG').value='';stUnits();
 }
 function renderStock(){
   const L=$('#stockList');
@@ -2283,7 +2288,7 @@ function useStock(id,log){
   const s=S.stock.find(x=>x.id===id); if(!s) return;
   const f=findFood(s.name); const g=Math.min(s.g,s.pu?(s.pu.n==='ml'?15*s.pu.g:s.pu.g):SPOON[s.name]?SPOON[s.name]*3:f&&f.u?f.u[1]:100); /* 調味料は大さじ1ずつ */
   s.g-=g; if(s.g<=0.5) S.stock=S.stock.filter(x=>x.id!==id);
-  if(log){addLog(mealNow(),`${s.name}（在庫から）`,[{name:s.name,g}]);toast(`${s.name}を${Math.round(g)}g 記録しました`)}
+  if(log){addLog(mealNow(),`${s.name}（在庫から）`,[{name:s.name,g}])}
   save();renderStock();
 }
 
@@ -2380,7 +2385,7 @@ function renderFuture(){
   $('#weekCard').innerHTML=weekHTML(T);$('#tdeeCard').innerHTML=tdeeHTML();$('#tdeeCard').hidden=!$('#tdeeCard').innerHTML;
   $('#bodyChart').innerHTML=bodyHTML();
   const bs=[...S.body].reverse();
-  $('#bodyTbl').innerHTML=bs.length?`<table><thead><tr><th>日付</th><th>体重</th><th>体脂肪率</th><th>骨格筋量</th></tr></thead><tbody>${bs.map(b=>`<tr><td>${b.d.slice(5).replace('-','/')}</td><td class="num">${b.w??'–'}kg</td><td class="num">${b.f??'–'}%</td><td class="num">${b.m??'–'}kg</td></tr>`).join('')}</tbody></table>`:'<p class="small muted">まだ記録がありません。</p>';
+  $('#bodyTbl').innerHTML=bs.length?`<table><thead><tr><th>日付</th><th>体重</th><th>体脂肪率</th><th>骨格筋量</th><th></th></tr></thead><tbody>${bs.map(b=>`<tr><td>${b.d.slice(5).replace('-','/')}</td><td class="num">${b.w??'–'}kg</td><td class="num">${b.f??'–'}%</td><td class="num">${b.m??'–'}kg</td><td><button type="button" class="x" data-bdel="${b.d}" aria-label="${b.d}の記録を消す" style="border:0;background:none;color:var(--muted);cursor:pointer">×</button></td></tr>`).join('')}</tbody></table>`:'<p class="small muted">まだ記録がありません。</p>';
 }
 
 function weekHTML(T){
@@ -2425,7 +2430,8 @@ function openDiag(){
 }
 function finishDiag(){
   if(S.sample){S=emptyState()}
-  S.ans={sex:dAns.sex,act:dAns.act,live:dAns.live,who:dAns.who,rhythm:dAns.rhythm,age:dAns.age,h:dAns.h,w:dAns.w,g:dAns.g,q:[...dQ]};save();
+  const keep=S.ans&&!S.sample?{deep:S.ans.deep,method:S.ans.method,tdeeReal:S.ans.tdeeReal}:{};
+  S.ans={...keep,sex:dAns.sex,act:dAns.act,live:dAns.live,who:dAns.who,rhythm:dAns.rhythm,age:dAns.age,h:dAns.h,w:dAns.w,g:dAns.g,q:[...dQ]};Object.keys(S.ans).forEach(k=>S.ans[k]===undefined&&delete S.ans[k]);save();
   const ty=typeOf(S.ans), T=targets();
   $('#dStepR').innerHTML=`<span class="small muted">あなたのタイプ</span><span class="code">${ty.code}</span><h2>${ty.name}</h2><p class="small" style="margin:0">${ty.line}</p>${axesHTML(ty.ax)}
    <b class="small">あなたのルール</b><ul class="small" style="margin:0;padding-left:1.2em">${ty.rules.map(r=>`<li>${r}</li>`).join('')}</ul>${ty.tips.length?`<b class="small">暮らしに合わせたコツ（${ty.life}）</b><ul class="small" style="margin:0;padding-left:1.2em">${ty.tips.map(r=>`<li>${r}</li>`).join('')}</ul>`:''}
@@ -2463,18 +2469,18 @@ function bind(){
     if(t.dataset.go) go(t.dataset.go);
     if(t.dataset.drink){const [di,si]=t.dataset.drink.split('|').map(Number),d=DRK[di],z=dSize(d,si),inf=logDrink(d.n,z.l,z.items,z.ml,!d.alc);toast(drinkMsg(d,si,inf))}
     if(t.dataset.mine){const en=(S.logs[viewDay||TODAY]||[]).find(x=>x.id===t.dataset.mine);if(en){S.my=S.my||[];S.my.push({id:uid(),name:en.title||en.items.map(i=>i.name).join('・'),items:JSON.parse(JSON.stringify(en.items))});save();renderMy();toast('マイ料理に登録しました')}}
-    if(t.dataset.myeat){const m=(S.my||[]).find(x=>x.id===t.dataset.myeat);if(m){const day=$('#mealDate').value||TODAY;addLog($('#mealSel').value||mealNow(),m.name,JSON.parse(JSON.stringify(m.items)),day);toast(`${m.name}を記録しました`)}}
-    if(t.dataset.myrm){S.my=(S.my||[]).filter(x=>x.id!==t.dataset.myrm);save();renderMy()}
+    if(t.dataset.myeat){const m=(S.my||[]).find(x=>x.id===t.dataset.myeat);if(m){const day=$('#mealDate').value||TODAY;undoable(`${m.name}を記録しました`,()=>addLog($('#mealSel').value||mealNow(),m.name,JSON.parse(JSON.stringify(m.items)),day))}}
+    if(t.dataset.myrm){undoable('マイ料理から外しました',()=>{S.my=(S.my||[]).filter(x=>x.id!==t.dataset.myrm);save();renderMy();renderRecent()})}
     if(t.dataset.open){openEntry=openEntry===t.dataset.open?null:t.dataset.open;delAsk=null;renderMeals()}
     if(t.dataset.delask){delAsk=t.dataset.delask;renderMeals()}
     if(t.dataset.delno){delAsk=null;renderMeals()}
     if(t.dataset.day){const d=new Date((viewDay||TODAY)+'T00:00');d.setDate(d.getDate()+(+t.dataset.day));const k=dkey(d);if(k<=TODAY){viewDay=k;openEntry=null;renderMeals()}}
-    if(t.dataset.del){const day=viewDay||TODAY;S.logs[day]=(S.logs[day]||[]).filter(x=>x.id!==t.dataset.del);delAsk=null;openEntry=null;save();renderHome();toast('記録を消しました')}
+    if(t.dataset.del){const day=viewDay||TODAY;undoable('記録を消しました',()=>{S.logs[day]=(S.logs[day]||[]).filter(x=>x.id!==t.dataset.del);delAsk=null;openEntry=null;save();renderHome()})}
     if(t.dataset.rm){pending.items.splice(+t.dataset.rm,1);renderResult()}
-    if(t.dataset.eat){const o=pending.options[+t.dataset.eat];addLog(mealNow(),o.name,[{name:o.name,g:100,per:{k:o.kcal,p:o.p,f:o.f||0,c:o.c||0,fi:o.fi||0,s:o.s||0}}]);toast(`${o.name}を記録しました`);go('home')}
-    if(t.dataset.use) useStock(t.dataset.use,true);
-    if(t.dataset.dec) useStock(t.dataset.dec,false);
-    if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})));toast(`${r.n}を記録しました`);renderRecipes()}
+    if(t.dataset.eat){const o=pending.options[+t.dataset.eat];go('home');undoable(`${o.name}を記録しました`,()=>addLog(mealNow(),o.name,[{name:o.name,g:100,per:{k:o.kcal,p:o.p,f:o.f||0,c:o.c||0,fi:o.fi||0,s:o.s||0}}]))}
+    if(t.dataset.use){const st=S.stock.find(x=>x.id===t.dataset.use);undoable(`${st?st.name:''}を1つ使って、記録しました`,()=>useStock(t.dataset.use,true))}
+    if(t.dataset.dec){const st=S.stock.find(x=>x.id===t.dataset.dec);undoable(`${st?st.name:''}を1つへらしました`,()=>useStock(t.dataset.dec,false))}
+    if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;undoable(`${r.n}を記録しました（在庫からも引きました）`,()=>{useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})))});renderRecipes()}
     if(t.dataset.rt){rTag=t.dataset.rt;renderRecipes()}
   });
   document.addEventListener('change',e=>{
@@ -2517,7 +2523,9 @@ function bind(){
   $('#photoBox').addEventListener('change',e=>{if(e.target.id==='phIn'&&e.target.files[0])addBodyPhoto(e.target.files[0])});
   $('#photoBox').addEventListener('click',photoClick);
   $('#chatBtn').addEventListener('click',()=>askCoach($('#chatIn').value));
-  $('#invSave').addEventListener('click',async()=>{const v=$('#invCode').value.normalize('NFKC').toLowerCase().replace(/\s+/g,'').replace(/[ー‐‑–—―−ｰ_]/g,'-');try{v?localStorage.setItem(INV,v):localStorage.removeItem(INV)}catch(e){}appAI();if(!v){toast('招待コードを消しました');return}
+  document.addEventListener('click',e=>{if(e.target.id==='undoBtn')doUndo()});
+  $$('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
+  $('#invSave').addEventListener('click',async()=>{const v=$('#invCode').value.normalize('NFKC').toLowerCase().replace(/\s+/g,'').replace(/[ー‐‑–—―−ｰ_]/g,'-');if(!v){toast('招待コードを入れてから「保存」を押してください');return}try{localStorage.setItem(INV,v)}catch(e){}appAI();
     /* その場でサーバーに確かめる */
     try{const r=await fetch(API_BASE+'/push/unsubscribe',{method:'POST',headers:{'Content-Type':'application/json','X-Invite':v},body:'{}'});
       if(r.status===403){$('#aiStatus').textContent='このコードは使えません。もらったコードをもう一度確かめてください。';toast('招待コードが違うようです');return}}catch(e){}
@@ -2537,12 +2545,12 @@ function bind(){
     const step=+t.dataset.askgo,text=($('#askText')||{}).value||'';if(!askStar&&!text.trim()){toast('★を選んでください');return}
     t.disabled=true;try{await sendFb({kind:'ask'+step,stars:askStar,text:text.trim(),screen:'home'});S['asked'+step]=true;if(step===7)S.asked3=true;askStar=0;save();renderAsk();toast('ありがとう！コーチに伝えたよ')}catch(err){t.disabled=false;toast(aiMsg(err))}});$('#pushTest').addEventListener('click',pushTestSend);$('#pushOff').addEventListener('click',pushDisable);
   $('#pushItems').addEventListener('change',e=>{const N=notifOf(),c=e.target.closest('[data-nk]'),t=e.target.closest('[data-nt]');if(c)N[c.dataset.nk].on=c.checked;if(t&&t.value)N[t.dataset.nt].t=t.value;save();if(S.pushOn)pushSync().catch(()=>{})});
-  $('#gKeySave').addEventListener('click',()=>{const v=$('#gKey').value.trim();try{v?localStorage.setItem(GKEY,v):localStorage.removeItem(GKEY)}catch(e){}$('#gKey').value='';appAI();toast(v?'キーを保存しました':'キーを消しました')});
+  $('#gKeySave').addEventListener('click',()=>{const v=$('#gKey').value.trim();if(!v){toast('キーを入れてから「保存」を押してください');return}try{localStorage.setItem(GKEY,v)}catch(e){}$('#gKey').value='';appAI();toast('キーを保存しました')});
 
   $('#treCard').addEventListener('click',e=>{const c=e.target.closest('[data-tre]');if(!c)return;const [a,h]=c.dataset.tre.split('|').map(Number);S.tre={s:a,h};save();renderTre();if(S.pushOn)pushSync().catch(()=>{})});
   setInterval(()=>{if(!$('#v-home').hidden)renderTre()},60000);
   $('#tdeeCard').addEventListener('click',e=>{const b=e.target.closest('[data-tdee]');if(!b)return;if(b.dataset.tdee==='on'){const R=realTdee();if(R&&R.real)S.ans.tdeeReal=R.real;toast('目安を、あなたの本当の消費に合わせました')}else{delete S.ans.tdeeReal;toast('計算式の目安に戻しました')}save();renderHome();renderFuture()});
-  $('#recentList').addEventListener('click',e=>{const b=e.target.closest('[data-again]');if(!b)return;const r=RECENT[+b.dataset.again];if(!r)return;addLog($('#mealSel').value||mealNow(),r.t,JSON.parse(JSON.stringify(r.items)),$('#mealDate').value||TODAY,r.dr?{dr:r.dr}:undefined);toast(`${r.t}を記録しました`);renderRecent()});
+  $('#recentList').addEventListener('click',e=>{const b=e.target.closest('[data-again]');if(!b)return;const r=RECENT[+b.dataset.again];if(!r)return;undoable(`${r.t}を記録しました`,()=>addLog($('#mealSel').value||mealNow(),r.t,JSON.parse(JSON.stringify(r.items)),$('#mealDate').value||TODAY,r.dr?{dr:r.dr}:undefined));renderRecent()});
   $('#chatIn').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();askCoach($('#chatIn').value)}});
   $('#chatEx').addEventListener('click',e=>{const c=e.target.closest('[data-ask]');if(c)askCoach(c.dataset.ask)});
   $('#condCard').addEventListener('click',e=>{const c=e.target.closest('[data-cond]');if(!c)return;const [k,v]=c.dataset.cond.split('|');setCond(k,isNaN(+v)?v:+v);renderCond();checkBadges()});
@@ -2564,8 +2572,10 @@ function bind(){
   $('#stAdd').addEventListener('click',stAddDo);
   $('#bAdd').addEventListener('click',()=>{const w=parseFloat($('#bW').value),f=parseFloat($('#bF').value),m=parseFloat($('#bM').value);
     if(isNaN(w)&&isNaN(f)&&isNaN(m)){toast('どれか1つは入れてください');return}
-    S.body=S.body.filter(b=>b.d!==TODAY);S.body.push({d:TODAY,w:isNaN(w)?null:w,f:isNaN(f)?null:f,m:isNaN(m)?null:m});
-    if(!isNaN(w)&&S.ans)S.ans.w=w;save();renderFuture();renderHome();$('#bW').value=$('#bF').value=$('#bM').value='';toast('体の記録を入れました')});
+    if((!isNaN(w)&&(w<20||w>300))||(!isNaN(f)&&(f<2||f>75))||(!isNaN(m)&&(m<5||m>120))){toast('数字を確かめてください（体重は kg、体脂肪率は %）');return}
+    undoable('体の記録を入れました',()=>{S.body=S.body.filter(b=>b.d!==TODAY);S.body.push({d:TODAY,w:isNaN(w)?null:w,f:isNaN(f)?null:f,m:isNaN(m)?null:m});
+    if(!isNaN(w)&&S.ans)S.ans.w=w;save();renderFuture();renderHome()});$('#bW').value=$('#bF').value=$('#bM').value=''});
+  $('#bodyTbl').addEventListener('click',e=>{const b=e.target.closest('[data-bdel]');if(!b)return;const d=b.dataset.bdel;undoable(`${d.slice(5).replace('-','/')}の体の記録を消しました`,()=>{S.body=S.body.filter(x=>x.d!==d);save();renderFuture()})});
   // 診断
   $$('#diag .opts').forEach(o=>o.addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;dAns[o.dataset.q]=c.dataset.v;o.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed',x===c))}));
   $('#diagCancel').addEventListener('click',()=>$('#diag').close());
@@ -2594,17 +2604,17 @@ function bind(){
   $('#openSettings').addEventListener('click',()=>{$('#clearConfirm').hidden=true;$$('#coachPick .chip').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===(S.coach||'f')));$$('#stockPick .chip').forEach(x=>x.setAttribute('aria-pressed',x.dataset.sm===(S.stockMode===true?'on':S.stockMode===false?'off':'auto')));openSettings()});
   window.openSettings=function(sec){$$('#whoPick .chip').forEach(x=>x.setAttribute('aria-pressed',!!S.ans&&x.dataset.w===whoOf()));renderFam();if(!$('#settings').open)$('#settings').showModal();if(sec){const el=$('#'+sec);if(el&&!el.hidden)setTimeout(()=>el.scrollIntoView({block:'start',behavior:'smooth'}),50)}};
   $('#closeSettings').addEventListener('click',()=>$('#settings').close());
-  $('#startOwn').addEventListener('click',()=>{if(REAL){S=JSON.parse(JSON.stringify(REAL));renderAll();toast('自分の記録に戻しました')}else openDiag()});
+  $('#startOwn').addEventListener('click',()=>{if(S.sample&&REAL){S=JSON.parse(JSON.stringify(REAL));renderAll();toast('自分の記録に戻しました')}else openDiag()});
   $('#reDiag').addEventListener('click',()=>{$('#settings').close();openDiag()});
   $('#aiRecipeBtn').addEventListener('click',askRecipes);
   $('#clearAll').addEventListener('click',()=>$('#clearConfirm').hidden=false);
   $('#clearNo').addEventListener('click',()=>$('#clearConfirm').hidden=true);
-  $('#clearYes').addEventListener('click',()=>{S=emptyState();save();$('#settings').close();renderHome();toast('記録を消しました')});
+  $('#clearYes').addEventListener('click',()=>{$('#settings').close();undoable('記録をすべて消しました',()=>{S=emptyState();save();renderHome()})});
 
 }
 /* ===== 起動 ===== */
-S=load()||sampleState();
-function renderAll(){renderHome();const v=($$('.tab').find(b=>b.getAttribute('aria-selected')==='true')||{}).dataset?.v;if(v&&v!=='home')go(v);$('#startOwn').textContent=REAL?'自分の記録に戻る':'自分で始める'}
+S=load()||emptyState();
+function renderAll(){renderHome();const v=($$('.tab').find(b=>b.getAttribute('aria-selected')==='true')||{}).dataset?.v;if(v&&v!=='home')go(v)}
 function appAI(){
   const inv=!!(API_BASE&&inviteCode()); SAMPLE=inv||gkey()?geminiSample():null; $('#readBtn').disabled=false;
   $('#aiDesc').textContent='GoogleのAI（Gemini）が写真を読みます。無料の範囲（1日数百回まで）で使えます。無料の範囲では、送った写真や文がGoogleのAIの改善に使われることがあります。';
@@ -2641,5 +2651,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041620').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041626').catch(()=>{}));</script>
 </body></html>
