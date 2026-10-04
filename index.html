@@ -1239,19 +1239,21 @@ function coachBigHTML(){
 
 /* ===== 文字で記録（お店・商品の名前でもOK） ===== */
 function normItems(list){return list.filter(i=>i&&i.name).map(i=>{const nm=String(i.name),n=+i.n;
-  if((i.prod||STORE_RE.test(nm))&&i.per&&typeof i.per==='object'&&+i.g>0){const k=n>0&&n<50?n:1;i.ug=Math.round(+i.g);i.g=i.ug*k;i.pf=1;return i}
-  const f=findFood(nm),u=f&&unitOf(f.n);if(u&&u[0]!=='ml'&&u[0]!=='cm'&&n>0&&n<50)i.g=n*u[1];return i}).map(i=>({name:String(i.name),g:Math.max(0,Math.round(+i.g||0)),...(i.pf?{pf:1,ug:i.ug}:{}),per:i.per&&typeof i.per==='object'?Object.fromEntries(['k','p','f','c','fi',...NK].map(k=>[k,+i.per[k]||0])):undefined,...(+i.abv>0&&!findFood(String(i.name))?{abv:Math.min(+i.abv,60)}:{})}))}
+  if((i.prod||STORE_RE.test(nm))&&i.per&&typeof i.per==='object'&&+i.g>0){const k=n>0&&n<50?n:1;i.ug=Math.round(+i.g);i.g=i.ug*k;i.pf=1;
+    const sz=i.sizes&&typeof i.sizes==='object'?Object.entries(i.sizes).filter(([a,b])=>a&&+b>0&&+b<3000).slice(0,4).map(([a,b])=>[String(a).slice(0,8),Math.round(+b)]):[];
+    if(sz.length>=2){i.sizes=Object.fromEntries(sz);i.sz=i.sizes[i.sz]?String(i.sz):(sz.find(x=>x[1]===i.ug)||sz[0])[0]}else{delete i.sizes;delete i.sz}return i}
+  const f=findFood(nm),u=f&&unitOf(f.n);if(u&&u[0]!=='ml'&&u[0]!=='cm'&&n>0&&n<50)i.g=n*u[1];return i}).map(i=>({name:String(i.name),g:Math.max(0,Math.round(+i.g||0)),...(i.pf?{pf:1,ug:i.ug,...(i.sizes?{sizes:i.sizes,sz:i.sz}:{})}:{}),per:i.per&&typeof i.per==='object'?Object.fromEntries(['k','p','f','c','fi',...NK].map(k=>[k,+i.per[k]||0])):undefined,...(+i.abv>0&&!findFood(String(i.name))?{abv:Math.min(+i.abv,60)}:{})}))}
 function textPrompt(q){
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、');
   return `食べたもの・飲んだものの説明です：「${q}」
 これを食品ごとに分けて、量をグラムで推定してください。
-・コンビニ（セブン-イレブン・ファミリーマート・ローソンなど）やチェーン店・メーカーの商品は、材料に分けずに商品1つとして扱ってください。name は「店名＋商品名」（例：セブン-イレブン ざるそば）、prod は true、g は1個（1パック）の内容量のグラム数、n は個数、per にはその商品の公式サイト・パッケージの栄養成分表示の値を100gあたりに直して入れてください。大盛り・普通盛りなどサイズが分かればそのサイズの値にします。量や玉の数を人に聞かず、ふつうに売られている1個で決めてください。
+・コンビニ（セブン-イレブン・ファミリーマート・ローソンなど）やチェーン店・メーカーの商品は、材料に分けずに商品1つとして扱ってください。name は「店名＋商品名」（例：セブン-イレブン ざるそば）、prod は true、g は1個（1パック）の内容量のグラム数、n は個数、per にはその商品の公式サイト・パッケージの栄養成分表示の値を100gあたりに直して入れてください。大盛り・普通盛りなどサイズが分かればそのサイズの値にします。量や玉の数を人に聞かず、ふつうに売られている1個で決めてください。同じ商品で大盛りなど量のちがう種類が売られているときだけ、sizes に種類ごとの内容量を {"普通":g,"大盛り":g} のように入れ、sz に選んだ種類を入れてください（種類が無ければ sizes は null）。
 ・量や個数（大盛り・2杯・半分など）が書いてあれば、それに合わせてください。個数が書いてある・数えられる食べ物は n に個数を入れてください（例：ゆで卵2個→n:2）。
 ・食品は次のリストに近いものはその名前をそのまま使ってください：${names}
 ・飲みものは g に ml の数を入れ、次のリストに近ければその名前を使ってください：${DRK.map(d=>d.n).join('、')}。リストに無いお酒は abv にアルコール度数（%）を入れてください。
 ・リストに無いものは per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください。
 ・title には短い料理名（例：牛丼並・みそ汁）。
-次のJSONだけを返してください：{"title":"","items":[{"name":"","g":0,"n":0,"prod":false,"per":null,"abv":0}]}`;
+次のJSONだけを返してください：{"title":"","items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0}]}`;
 }
 async function readText(){
   const q=$('#textLog').value.trim(), st=$('#textSt'); if(!q){st.textContent='食べたものを書いてください。';return}
@@ -1946,7 +1948,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041642';
+const APPVER='202610041647';
 /* アプリを開き直したとき、新しい版が出ていれば読みこみ直す（古い画面が残らないように） */
 async function checkNewVer(){if(APPVER==='dev'||!/^https?:/.test(location.protocol))return;try{const t=await (await fetch('./?nv='+Date.now(),{cache:'no-store'})).text();const m=t.match(/const APPVER='(\d+)'/);if(m&&m[1]!==APPVER){if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.update().catch(()=>{})))}location.reload()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVer()});setTimeout(checkNewVer,1500);
@@ -2177,7 +2179,7 @@ async function ai(prompt,opts){if(!SAMPLE) throw {code:APP?'no_key':'unavailable
 function prompts(){
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、'); const T=targets();
   return {
-   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真に写っている食べ物を材料ごとに分け（ただし、コンビニやメーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに近いものは、その名前をそのまま使ってください：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。次のJSONだけを返してください：{"title":"料理名","items":[{"name":"","g":0,"n":0,"per":null,"abv":0}]}`,
+   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真に写っている食べ物を材料ごとに分け（ただし、コンビニやメーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める。大盛りなど量のちがう種類が売られている商品だけ sizes に {"普通":g,"大盛り":g}、sz に写真から見た種類を入れる）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに近いものは、その名前をそのまま使ってください：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。次のJSONだけを返してください：{"title":"料理名","items":[{"name":"","g":0,"n":0,"per":null,"abv":0}]}`,
    menu:`外食のメニューの写真です。ダイエット中の人（1食の目安 ${T?Math.round(T.kcal/3):650}kcal、たんぱく質を多めにとりたい）向けに、${styleNote()?'次の条件も守ってください。'+styleNote().replace(/\n/g,'／')+'。':''}メニューから最大5品を選び、1人前の推定カロリー・たんぱく質g・脂質g・炭水化物g・食物繊維g・食塩相当量g・判定（おすすめ／ふつう／控えめに のどれか）・短い理由を付けてください。次のJSONだけを返してください：{"options":[{"name":"","kcal":0,"p":0,"f":0,"c":0,"fi":0,"s":0,"verdict":"","reason":""}]}`,
    receipt:`買い物のレシートの写真です。食材だけを抜き出し、次のリストに近い名前はその名前を使い、量をグラムで推定してください：${names}。コンビニのお弁当・麺・おにぎり・サラダなどの商品は、リストの名前にせず name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値（{"k":0,"p":0,"f":0,"c":0,"fi":0,"s":0}）を入れてください。次のJSONだけを返してください：{"items":[{"name":"","g":0,"n":0,"prod":false,"per":null}]}`
   }[mode];
@@ -2248,6 +2250,7 @@ function renderResult(){
   <div class="items">${items.map((it,i)=>{const f=it.pf?null:findFood(it.name);const unit=f&&f.u&&mode==='receipt'?`約${r1(it.g/f.u[1])}${f.u[0]}`:'';
    const U=itU(it);
    return `<div class="item"><span class="nm">${esc(f?f.n:it.name)}${f?'':`<span class="small muted">${it.pf?'（公式の表示より）':'（AI推定）'}</span>`}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>`}).join('')}</div>
+  ${items.map((it,i)=>it.pf&&it.sizes?`<div class="qa stack" style="gap:6px"><b class="small">${esc(it.name)}のサイズはこれで合ってる？</b><div class="chips">${Object.entries(it.sizes).map(([k,g])=>`<button type="button" class="chip" data-sz="${i}|${esc(k)}" aria-pressed="${it.sz===k}">${esc(k)}（${g}g）</button>`).join('')}</div></div>`:'').join('')}
   ${mode==='meal'?`<div class="tot num"><b>${Math.round(t.k)} kcal</b><span>たんぱく質 ${r1(t.p)}g</span><span>脂質 ${r1(t.f)}g</span><span>炭水化物 ${r1(t.c)}g</span><span>食物繊維 ${r1(t.fi)}g</span><span>塩分 ${r1(t.s)}g</span>${t.alc>=1?`<span>純アルコール ${Math.round(t.alc)}g</span>`:''}</div>`:''}
   ${mode==='meal'?cookQHTML():''}
   ${mode==='meal'?'<label class="small row" style="gap:8px"><input type="checkbox" id="saveMy"> マイ料理にも登録する（次から「食べた」をワンタップ。よく買う商品にも）</label>':''}
@@ -2494,7 +2497,7 @@ function showRecs(){
 function bind(){
   $$('.tab').forEach(b=>b.addEventListener('click',()=>go(b.dataset.v)));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-cook],[data-rt]');if(!t)return;
+    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-cook],[data-rt]');if(!t)return;
     if(t.dataset.plan){planShift++;renderHome()}
     if(t.dataset.pe){const T=targets(),d=S.ans.deep,k=['bf','lunch','dn'][+t.dataset.pe],x=planAll(T,d,dayNum()+planShift)[+t.dataset.pe];if(x&&x.it){const ml={bf:'朝',lunch:'昼',dn:'夜'}[k];if(x.it.cook)useFromStock(x.it.ing.map(([name,g])=>({name,g})));addLog(ml,x.it.n,x.it.ing.map(([name,g])=>({name,g})));toast(`${x.it.n}を記録しました`)}}
     if(t.dataset.go) go(t.dataset.go);
@@ -2511,6 +2514,9 @@ function bind(){
     if(t.dataset.eat){const o=pending.options[+t.dataset.eat];go('home');undoable(`${o.name}を記録しました`,()=>addLog(mealNow(),o.name,[{name:o.name,g:100,per:{k:o.kcal,p:o.p,f:o.f||0,c:o.c||0,fi:o.fi||0,s:o.s||0}}]))}
     if(t.dataset.use){const st=S.stock.find(x=>x.id===t.dataset.use);undoable(`${st?st.name:''}を1つ使って、記録しました`,()=>useStock(t.dataset.use,true))}
     if(t.dataset.stdel){const st=S.stock.find(x=>x.id===t.dataset.stdel);undoable(`${st?st.name:''}を消しました`,()=>{S.stock=S.stock.filter(x=>x.id!==t.dataset.stdel);save();renderStock()})}
+    if(t.dataset.sz){const [i,k]=t.dataset.sz.split('|'),it=pending&&pending.items[+i];if(it&&it.sizes&&it.sizes[k]){
+      const fix=x=>{const c=x.ug>0?x.g/x.ug:1;x.ug=x.sizes[k];x.g=Math.round(x.ug*c);x.sz=k};fix(it);
+      const b=(pending.base||[]).find(x=>x!==it&&x.name===it.name&&x.sizes);if(b)fix(b);renderResult()}}
     if(t.dataset.stedit){stEdit=stEdit===t.dataset.stedit?null:t.dataset.stedit;renderStock();const i=$('#stEditV');if(i){i.focus();i.select()}}
     if(t.dataset.stsave){const st=S.stock.find(x=>x.id===t.dataset.stsave),U=st&&stU(st),v=+$('#stEditV').value;if(!st)return;
       if($('#stEditV').value===''||!(v>=0)){toast('数を入れてください');return}if(v>stMax(U[0])){toast(`数が大きすぎます（${stMax(U[0])}まで）`);return}
@@ -2689,5 +2695,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041642').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041647').catch(()=>{}));</script>
 </body></html>
