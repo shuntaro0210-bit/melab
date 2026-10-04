@@ -1938,7 +1938,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041515';
+const APPVER='202610041521';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2116,7 +2116,7 @@ function setMode(m){
 }
 let SAMPLE=null, DOC=null, REAL=null;
 const APP=!(window.claude&&window.claude.use); /* claude.ai の外（スマホのアプリとして開いたとき） */
-const API_BASE=''; /* Cloudflare に置いたサーバーのアドレス */
+const API_BASE='https://melab-api.melab-api.workers.dev'; /* Cloudflare に置いたサーバーのアドレス */
 const INV='melab-invite';
 function inviteCode(){try{return localStorage.getItem(INV)||''}catch(e){return ''}}
 function ub64(x){x=x.replace(/-/g,'+').replace(/_/g,'/');while(x.length%4)x+='=';const b=atob(x),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
@@ -2612,5 +2612,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041515').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041521').catch(()=>{}));</script>
 </body></html>
