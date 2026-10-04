@@ -1938,7 +1938,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041521';
+const APPVER='202610041531';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2131,7 +2131,7 @@ async function imgPart(f){
   try{const bm=await createImageBitmap(f),k=Math.min(1,1280/Math.max(bm.width,bm.height)),c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return {inline_data:{mime_type:'image/jpeg',data:c.toDataURL('image/jpeg',.85).split(',')[1]}}}
   catch(e){const u=await new Promise((ok,ng)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=ng;r.readAsDataURL(f)});return {inline_data:{mime_type:f.type||'image/jpeg',data:String(u).split(',')[1]}}}
 }
-const GMODELS=['gemini-flash-latest','gemini-2.5-flash','gemini-2.0-flash'];
+const GMODELS=['gemini-flash-latest','gemini-3.5-flash','gemini-flash-lite-latest'];
 async function gemini(contents,json){
   if(API_BASE&&inviteCode()) return relay(contents,json);
   const key=gkey(); if(!key) throw {code:'no_key'}; let last={code:'unavailable'};
@@ -2612,5 +2612,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041521').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041531').catch(()=>{}));</script>
 </body></html>
