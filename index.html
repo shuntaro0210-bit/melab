@@ -356,6 +356,7 @@ header.top .btn{white-space:nowrap}@media (max-width:400px){header.top .date{dis
 
 <!-- 在庫 -->
 <section id="v-stock" class="stack" hidden>
+  <div class="card stack" id="cookStage" hidden></div>
   <div class="card stack" id="shopCard"></div>
   <div class="card stack" id="canCook"></div>
   <div class="row"><h2>冷蔵庫の中</h2><span class="sp"></span><button class="btn sm pri" type="button" id="toReceipt">レシートで追加</button></div>
@@ -1296,7 +1297,8 @@ function nextPlan(){
   const okPM=x=>!x.ng.some(g=>cats.includes(g))&&!al.some(v=>x.n.includes(v));
   const best=(list)=>list.filter(okPM).map(x=>({x,s:scoreFood(x.t,need,Math.max(R,300),T,saltHigh)})).sort((a,b)=>b.s-a.s)[0];
   const eat=best(slot[0]==='lunch'?[...PM.eat]:PM.eat), conv=best(PM.conv);
-  const rec=mainRecipes().map(r=>({r,s:scoreFood(recT(r),need,Math.max(R,300),T,saltHigh)+(stockOn()&&r.ing.every(([n])=>SPOON[n]||haveStock(n))?1.5:0)})).sort((a,b)=>b.s-a.s)[0];
+  const mr=mainRecipes(), mk=stockOn()&&S.stock.length?mr.filter(canMake):[];
+  const rec=(mk.length?mk:mr).map(r=>({r,s:scoreFood(recT(r),need,Math.max(R,300),T,saltHigh)})).sort((a,b)=>b.s-a.s)[0];
   return {slot,t,T,R,need,saltHigh,eat:eat&&eat.x,conv:conv&&conv.x,rec:rec&&rec.r,w};
 }
 function nextHTML(){
@@ -1306,7 +1308,7 @@ function nextHTML(){
   const [,lab,when]=N.slot, needTxt=N.need.length?N.need.map(x=>`${NEEDN[x.k]}（あと${x.k==='fe'||x.k==='vd'||x.k==='fi'?r1(x.d):Math.round(x.d)}${{p:'g',fi:'g',ca:'mg',fe:'mg',vd:'µg',vc:'mg',kp:'mg'}[x.k]}）`).join('・'):'';
   const Rt=N.R>0?`残りは約<b class="num">${N.R}kcal</b>。`:`もう目安を約${-N.R}kcalこえているので、${when}は軽めに。`;
   const pm=(x,head)=>x?`<div class="nx"><span class="k">${head}</span><div class="v"><b>${esc(x.n)}</b><span class="small muted num">${x.g?esc(x.g)+'・':''}約${x.k}kcal・たんぱく質${Math.round(x.t.p)}g・塩分${r1(x.t.s)}g</span>${x.how?`<span class="small muted">${esc(x.how)}</span>`:''}</div></div>`:'';
-  const rc=(r,head)=>r?`<div class="nx"><span class="k">${head}</span><div class="v"><b>${esc(r.n)}</b><span class="small muted num">${r.min}分・約${Math.round(recT(r).k)}kcal・たんぱく質${Math.round(recT(r).p)}g</span></div></div>`:'';
+  const rc=(r,head)=>r?`<div class="nx"><span class="k">${head}</span><div class="v"><b>${esc(r.n)}</b><span class="small muted num">${r.min}分・約${Math.round(recT(r).k)}kcal・たんぱく質${Math.round(recT(r).p)}g</span>${stockOn()&&S.stock.length?(canMake(r)?'<span class="small">在庫で作れる</span>':`<span class="small muted">足りない：${missOf(r).map(esc).join('・')}</span>`):''}</div></div>`:'';
   let body='';
   if(N.w==='none') body=pm(N.eat,'お店')+pm(N.conv,'コンビニ')+rc(N.rec,'作るなら');
   else if(N.w==='made') body=`<div class="nx"><span class="k">お願い</span><div class="v">${reqHTML(lab,T,dayNum()+planShift,N.need.map(x=>x.k))}</div></div>`+pm(N.conv,'外なら');
@@ -1807,15 +1809,15 @@ function shopList(){
 }
 function renderShop(){
   const T=targets(), L=shopList(); S.shop=S.shop||{};
-  if(!T){$('#shopCard').innerHTML='<h3>買い物リスト</h3><p class="small muted">診断をすると、あなたに必要な食材が出ます。</p>';$('#canCook').innerHTML='';return}
+  const cs=cookStageHTML();$('#cookStage').hidden=!cs;$('#cookStage').innerHTML=cs;renderCanCook();$('#shopCard').hidden=S.cookStage==='start';
+  if(!T){$('#shopCard').innerHTML='<h3>買い物リスト</h3><p class="small muted">診断をすると、あなたに必要な食材が出ます。</p>';return}
   const bought=['卵','納豆','豆腐（木綿）','鶏むね肉（皮なし）','ブロッコリー','バナナ'];
   $('#shopCard').innerHTML=`<div class="row"><h3>買い物リスト</h3><span class="sp"></span><button class="btn sm" type="button" id="shopCopy">コピー</button></div>
    <p class="small muted" style="margin:0">${L.days?`この${L.days}日の記録で足りていない「${L.needs.slice(0,4).map(k=>NEEDN[k]).join('・')}」がとれる食材です。`:'記録がたまるまでは、ダイエット中に不足しやすい栄養から出しています。'}やり方「${METHODS[T.m][0]}」と食事スタイルに合わせ、冷蔵庫にあるものは外しています。</p>
    <ul class="clean stack" style="gap:6px">${L.items.map(x=>`<li><label class="row" style="gap:8px"><input type="checkbox" data-shop="${esc(x.f)}"${S.shop[x.f]?' checked':''}><span style="flex:1;min-width:0"><b>${esc(x.f)}</b><span class="small muted">　${esc(x.why.join('・'))}</span></span><span class="small muted">${BUYU[x.f]||''}</span></label></li>`).join('')}</ul>
    <p class="small muted" style="margin:0">買ったら「レシートで追加」で在庫に入れると、次から在庫を使ったレシピが出ます。</p>`;
   $('#shopCopy').onclick=async()=>{const txt=L.items.map(x=>`・${x.f}`).join('\n');try{await navigator.clipboard.writeText(txt);toast('コピーしました')}catch(e){toast('コピーできませんでした')}};
-  const rs=RECIPES.map((r,i)=>({r,i,hv:r.ing.filter(([n,g])=>!SPOON[n]&&haveStock(n)).length,need:r.ing.filter(([n])=>!SPOON[n]).length})).filter(x=>x.hv&&x.r.ing.every(([n])=>foodOK(n))).sort((a,b)=>b.hv/b.need-a.hv/a.need).slice(0,4);
-  $('#canCook').innerHTML=`<h3>在庫から作れるもの</h3>${rs.length?`<ul class="clean stack" style="gap:6px">${rs.map(x=>`<li class="row"><span style="flex:1;min-width:0"><b>${esc(x.r.n)}</b><span class="small muted">　材料 ${x.hv}/${x.need} が在庫にある・${x.r.min}分</span></span></li>`).join('')}</ul><div><button class="btn sm pri" type="button" data-rt="stock" data-go="recipe">レシピを見る</button></div>`:'<p class="small muted" style="margin:0">在庫が入ると、作れるレシピが出ます。</p>'}`;
+  /* 在庫から作れるものは renderCanCook */
 }
 /* ===== 量をふだんの単位で（g は横に小さく） ===== */
 const UNIT={'キャベツ':['枚',50],'わかめ（水もどし）':['つまみ',10],'ゆで卵':['個',50],'目玉焼き':['個',50],'サラダチキン':['パック',110],'豆腐バー':['本',120],'そば（ゆで）':['玉',170],'中華めん（ゆで）':['玉',230],'塩ざけ':['切れ',80],'さば（焼き）':['切れ',80],'さば缶（水煮）':['缶',150],'焼き鳥（もも）':['本',30],'鶏もも（皮なし・焼き）':['枚',200],'豚ロース（焼き）':['枚',25],'豚もも（ゆで）':['枚',17],'牛もも':['枚',20],'牛ばら':['人前',80],'まぐろ（赤身）':['切れ',12],'たい':['切れ',10],'サーモン':['切れ',12],'えび':['尾',15],'ほたて':['個',25],'あさり':['個',8],'大根（煮たもの）':['切れ',100],'厚揚げ':['枚',150],'こんにゃく':['枚',250],'枝豆':['小皿',60],'長いも':['cm',20],'レタス':['枚',30],'きゅうり':['本',100],'ミニトマト':['個',10],'小松菜':['束',200],'オクラ':['本',10],'ピーマン':['個',30],'にら':['束',100],'もやし':['袋',200],'ねぎ':['本',100],'しょうが':['かけ',15],'のり':['枚',3],'梅干し':['個',5],'全粒粉パン':['個',30],'ナン':['枚',100],'無調整豆乳':['ml',1],'しらす':['大さじ',5],'かつお節':['パック',2.5],'チャーシュー':['枚',15],'メンマ':['本',3],'八宝菜':['人前',250],'ブロッコリー（ゆで）':['房',15],'ブロッコリー':['房',15],'ほうれん草（ゆで）':['束',200]};
@@ -1902,17 +1904,32 @@ function pickFrom(list,m,budget,seed,used){
   pref(x=>x.k<=budget*1.25);
   return c[(seed%c.length+c.length)%c.length];
 }
-function cookPick(meal,m,seed){
+function cookPick(meal,m,seed,used){
   const byName=n=>RECIPES.find(r=>r.n===n), ok=r=>r&&r.ing.every(([n])=>foodOK(n));
-  const rice=m==='keto'?0:m==='locarbo'?100:150;
+  let rice=m==='keto'?0:m==='locarbo'?100:150;
   let sets=meal==='bf'?[['納豆たまごかけごはん'],['バナナとオートミールのヨーグルト'],['ほうれん草と卵の炒めもの','*'],['納豆と豆腐のねばねば丼']]
     :[['鶏むねとブロッコリーのレンジ蒸し','豆腐とわかめのみそ汁','*'],['鮭ときのこのホイル焼き','冷ややっこ ねぎのせ','*'],['さばとトマトの煮込み','豆腐とわかめのみそ汁','*'],['豆腐ステーキ きのこソース','ツナとキャベツのレンジサラダ','*'],['鶏むねときのこの和風スープ','ブロッコリーとゆで卵のサラダ','*'],['鮭の塩焼き定食（家で）'],['豆腐ステーキ きのこソース','豆腐とわかめのみそ汁','*'],['納豆と豆腐のねばねば丼','豆腐とわかめのみそ汁']];
   sets=sets.filter(x=>x.every(n=>n==='*'||ok(byName(n))));
+  let noRice=false;
+  if(stockOn()){ /* 在庫を使う人は、在庫だけで作れるものだけ出す */
+    if(!S.stock.length) return {empty:true};
+    let ss=sets.filter(x=>x.every(n=>n==='*'||canMake(byName(n))));
+    if(!ss.length){
+      const mk=RECIPES.filter(r=>ok(r)&&canMake(r)), SIDE=/みそ汁|おひたし|冷ややっこ|サラダ$|納豆オクラ/;
+      let mains=mk.filter(r=>!SIDE.test(r.n)), sides=mk.filter(r=>SIDE.test(r.n)), at=(L)=>L[(seed%L.length+L.length)%L.length];
+      if(used&&mains.some(r=>!used.includes(r.n)))mains=mains.filter(r=>!used.includes(r.n));
+      if(mains.length){const a=at(mains),b=meal!=='bf'&&sides.length?at(sides):null;ss=[[a.n,...(b?[b.n]:[]),...(a.ing.some(([n])=>n==='ごはん')?[]:['*'])]]}
+      else if(sides.length) ss=[[at(sides).n,'*']];
+    }
+    if(!ss.length){const near=RECIPES.filter(ok).map(r=>({r,miss:missOf(r)})).filter(x=>x.miss.length===1);return {none:true,near:near.slice(0,3)}}
+    sets=ss; if(used&&sets.some(x=>!used.includes(x[0])))sets=sets.filter(x=>!used.includes(x[0]));
+    if(rice&&!enough('ごはん',rice)){noRice=sets.some(x=>x.includes('*'));rice=0}
+  }
   if(!sets.length) return null;
   const set=sets[(seed%sets.length+sets.length)%sets.length];
   const ing=set.flatMap(n=>n==='*'?(rice?[['ごはん',rice]]:[]):byName(n).ing.map(([a,g])=>[a,a==='ごはん'?rice:g])).filter(([,g])=>g>0);
   const t=sum(ing.map(([name,g])=>({name,g})));
-  return {n:set.filter(n=>n!=='*').join('＋')+(set.includes('*')&&rice?`＋ごはん${amt('ごはん',rice).replace(/（.*）/,'')}`:''),k:Math.round(t.k),p:Math.round(t.p),t,ing,cook:set.filter(n=>n!=='*').map(byName)};
+  return {n:set.filter(n=>n!=='*').join('＋')+(set.includes('*')&&rice?`＋ごはん${amt('ごはん',rice).replace(/（.*）/,'')}`:''),k:Math.round(t.k),p:Math.round(t.p),t,ing,cook:set.filter(n=>n!=='*').map(byName),noRice};
 }
 function addPro(){const c=bannedCats();return c.includes('egg')?(c.includes('meat')?'豆腐か納豆を1つ足す':'サラダチキンか納豆を1つ足す'):c.includes('meat')?'ゆで卵か納豆を1つ足す':'ゆで卵かサラダチキンを1つ足す'}
 function mealPlan(meal,src,T,seed,used){
@@ -1925,7 +1942,10 @@ function mealPlan(meal,src,T,seed,used){
     return {lab,src,text:{made:`出てきたものをそのまま食べてOK。食べる順番を「野菜→たんぱく質→ごはん」に。${rice}、おかわりはしない`,served:`ビュッフェやまかないなら、たんぱく質のおかずと野菜で皿の半分を埋める。${rice}。揚げ物は1品まで`,canteen:`定食か日替わりで、主菜は魚か鶏を選ぶ。${rice}。小鉢は野菜かたんぱく質のもの`}[src]};
   }
   let it=null, list=null;
-  if(src==='cook') it=cookPick(meal,m,seed);
+  if(src==='cook'){it=cookPick(meal,m,seed,used);
+    if(it&&it.empty) return {lab,src,go:1,text:'自炊の人は、冷蔵庫の食材と調味料を全部入れてください。在庫だけで作れるものを出します（まだそろっていなければ「これからそろえる」を選ぶと、あなたに合う食材と調味料を出します）'};
+    if(it&&it.none) return {lab,src,go:1,text:`在庫だけで作れる案がありません。${it.near.length?it.near.map(x=>`${x.miss[0]}を買えば「${x.r.n}」`).join('、')+'が作れます':'食材を買い足してください'}`};
+  }
   else if(src==='conv'||src==='kiosk') it=pickFrom(meal==='bf'?PM.convBf:PM.conv,m,budget,seed,used);
   else if(src==='eatout'){list=meal==='bf'?PM.eatBf:PM.eat;it=pickFrom(list,m,budget,seed,used)}
   else if(src==='deli') it=pickFrom(PM.deli,m,budget,seed,used);
@@ -1933,7 +1953,7 @@ function mealPlan(meal,src,T,seed,used){
   if(used) used.push(it.n.split('＋')[0]);
   const cats=bannedCats(), al=allergyWords();
   const shops=list&&meal!=='bf'?PM.eat.filter(x=>x!==it&&!x.ng.some(g=>cats.includes(g))&&!al.some(w=>x.n.includes(w))):[];
-  return {lab,src,it,notes:[it.how,...adj(it)].filter(Boolean),shops};
+  return {lab,src,it,notes:[it.how,it.noRice?'ごはんが在庫に無いので、おかずだけの量です':'',...adj(it)].filter(Boolean),shops};
 }
 function planAll(T,d,seed){const used=[];return [['bf',d.bf],['lunch',d.lunch],['dn',d.dn]].map(([k,src],i)=>mealPlan(k,src,T,seed+i*3,used))}
 function planHTML(){
@@ -1949,7 +1969,7 @@ function planHTML(){
    ${x.it?`<span>${x.it.g?`<span class="muted">${esc(x.it.g)}なら　</span>`:''}<b>${esc(x.it.n)}</b></span><span class="small num muted">約${x.it.k}kcal ・ たんぱく質 ${Math.round(x.it.t.p)}g ・ 脂質 ${Math.round(x.it.t.f)}g ・ 炭水化物 ${Math.round(x.it.t.c)}g ・ 塩分 ${r1(x.it.t.s)}g</span>${x.notes.map(n=>`<span class="small">・${esc(n)}</span>`).join('')}
    ${x.it.cook?x.it.cook.map(r=>`<details><summary class="small"><b>作り方：${esc(r.n)}</b>（${r.min}分）</summary><div class="small" style="display:grid;gap:6px;margin-top:6px"><div><b>材料（1人分）</b>　${amts(r.ing)}</div><ol style="margin:0;padding-left:1.3em">${r.steps.map(z=>`<li>${esc(z)}</li>`).join('')}</ol></div></details>`).join('')+(x.it.n.includes('＋ごはん茶碗')?`<span class="small muted">ごはんは炊いたもの、またはパックごはんを量って</span>`:''):`<details><summary class="small">中身（計算に使った量）</summary><p class="small muted" style="margin:6px 0 0">${amts(x.it.ing)}</p></details>`}
    ${x.shops&&x.shops.length?`<details><summary class="small">ほかのお店なら</summary><ul class="small clean" style="display:grid;gap:6px;margin-top:6px">${x.shops.map(o=>`<li><b>${esc(o.g)}</b>：${esc(o.n)}<span class="muted num">（約${o.k}kcal）</span>${o.how?`<br><span class="muted">${esc(o.how)}</span>`:''}</li>`).join('')}</ul></details>`:''}
-   <div><button class="btn sm" type="button" data-pe="${i}">これを食べた</button></div>`:`${x.req?reqHTML(x.lab,T,seed+i):''}<span class="small">${esc(x.text)}</span>`}</div>`).join('')}${whoOf()==='cookfor'?famHTML(T):''}
+   <div><button class="btn sm" type="button" data-pe="${i}">これを食べた</button></div>`:`${x.req?reqHTML(x.lab,T,seed+i):''}<span class="small">${esc(x.text)}</span>${x.go?'<div><button class="btn sm pri" type="button" data-go="stock">在庫を入れる</button></div>':''}`}</div>`).join('')}${whoOf()==='cookfor'?famHTML(T):''}
   ${counted?`<p class="small" style="margin:0">${counted===3?'3食の合計':'出ている分の合計'} 約<b class="num">${tot}kcal</b>（1日の目安 ${T.kcal}kcal）。${counted===3&&tot<T.kcal-200?`あと約${Math.round((T.kcal-tot)/50)*50}kcalは、間食（ヨーグルト・ナッツ・果物）か、ごはんを少し増やしてOK`:counted===3&&tot>T.kcal?'目安より多いので、どこか1食のごはんを半分に':''}</p>`:''}
   ${vegan?'<p class="small muted" style="margin:0">ビーガンの外食は、だしや調味料に動物性のものが入っていることが多いので、お店に確認を。</p>':''}`;
 }
@@ -1981,6 +2001,9 @@ const RECIPES=[
  {n:'納豆オクラ',min:3,tags:['protein','fiber'],ing:[['納豆',45],['オクラ',40],['しょうゆ',3]],steps:['オクラを600Wで30秒温める','小口切りにする','納豆・しょうゆと混ぜる'],q:'納豆 オクラ'},
  {n:'もやしとにらの卵とじ',min:7,tags:['protein','fiber'],ing:[['もやし',100],['にら',30],['卵',50],['サラダ油',3],['しょうゆ',4]],steps:['にらを4cmに切る','油でもやしとにらをさっと炒める','しょうゆで味つけし、溶き卵を回し入れて固まったら火を止める'],q:'もやし にら 卵とじ'}
 ];const TAGN={protein:'たんぱく質',fiber:'食物繊維',lowfat:'脂質ひかえめ',lowcarb:'糖質ひかえめ',lowsalt:'塩分ひかえめ',mineral:'カルシウム・鉄',quick:'5分以内',range:'レンジだけ',alcohol:'お酒の日のつまみ'};
+/* 作り方に出てくるけど、なくても作れるもの */
+const OPT={'鶏むねとブロッコリーのレンジ蒸し':['こしょう','酒'],'鮭ときのこのホイル焼き':['こしょう','酒'],'豆腐とわかめのみそ汁':['だしの素'],'冷ややっこ ねぎのせ':['ねぎ','しょうが'],'さばとトマトの煮込み':['こしょう'],'ほうれん草と卵の炒めもの':['こしょう'],'鶏むねときのこの和風スープ':['片栗粉','だしの素'],'納豆と豆腐のねばねば丼':['ねぎ'],'牛もも肉とピーマンの炒めもの':['こしょう']};
+RECIPES.forEach(r=>{if(OPT[r.n])r.opt=OPT[r.n]});
 /* 栄養と作り方から自動でつける分類 */
 RECIPES.forEach(r=>{const t=sum(r.ing.map(([name,g])=>({name,g}))),st=r.steps.join('');r.t=t;
   const add=k=>{if(!r.tags.includes(k))r.tags.push(k)};
@@ -2160,7 +2183,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610050853';
+const APPVER='202610050919';
 /* アプリを開き直したとき、新しい版が出ていれば読みこみ直す（古い画面が残らないように） */
 async function checkNewVer(){if(APPVER==='dev'||!/^https?:/.test(location.protocol))return;try{const t=await (await fetch('./?nv='+Date.now(),{cache:'no-store'})).text();const m=t.match(/const APPVER='(\d+)'/);if(m&&m[1]!==APPVER){if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.update().catch(()=>{})))}location.reload()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVer()});setTimeout(checkNewVer,1500);
@@ -2282,7 +2305,7 @@ function renderHome(){
   renderMeals();applyStockMode();
 }
 let viewDay=null, openEntry=null, delAsk=null;
-function useFromStock(list){list.forEach(({name,g})=>{const f=findFood(name);const s=S.stock.find(x=>x.name===name||(f&&x.name===f.n));if(s){s.g-=g;if(s.g<=0.5)S.stock=S.stock.filter(x=>x!==s)}})}
+function useFromStock(list){list.forEach(({name,g})=>{const s=haveStock(name);if(!s)return;if(name==='みそ汁'&&s.name!=='みそ汁')g*=0.12;else if(name==='ごはん'&&/米/.test(s.name))g*=0.45;s.g-=g;if(s.g<=0.5)S.stock=S.stock.filter(x=>x!==s)})}
 function renderMy(){
   const L=S.my||[];
   $('#myList').innerHTML=L.length?L.map(m=>`<div class="row"><span style="flex:1;min-width:0"><b>${esc(m.name)}</b><span class="small muted num">　${Math.round(sum(m.items).k)}kcal</span></span><button class="btn sm pri" type="button" data-myeat="${m.id}">食べた</button><button class="x" type="button" data-myrm="${m.id}" aria-label="${esc(m.name)}をマイ料理から外す">×</button></div>`).join(''):'';
@@ -2683,32 +2706,88 @@ function useStock(id,log){
 }
 
 /* ----- レシピ ----- */
-let rTag='need', AIREC=[];
-const haveStock=n=>S.stock.find(s=>s.name===n);
+let rTag=null, AIREC=[];
+/* 在庫に「ある」かの当て方：名前が同じ・（）を外して同じ・成分表で同じ・よくある言いかえ */
+var STK_SYN={'ごはん':['お米（精白米）','米','パックごはん','ごはん','玄米ごはん','無洗米'],'鮭':['塩ざけ','さけ','サーモン','生鮭'],'さば':['さば缶（水煮）','塩さば'],'卵':['たまご','玉子'],'豆腐（木綿）':['豆腐','木綿豆腐','絹豆腐','豆腐（絹）','絹ごし豆腐'],'ねぎ':['長ねぎ','青ねぎ','小ねぎ','万能ねぎ','白ねぎ'],'みそ汁':['みそ','味噌'],'みそ':['味噌'],'わかめ（水もどし）':['わかめ','乾燥わかめ','カットわかめ'],'ヨーグルト（無糖）':['ヨーグルト','プレーンヨーグルト'],'ツナ缶（水煮）':['ツナ','ツナ缶'],'しめじ':['ぶなしめじ'],'鶏むね肉（皮なし）':['鶏むね肉','鶏むね','鶏胸肉'],'豚もも（ゆで）':['豚もも','豚もも肉','豚しゃぶ用'],'しょうゆ':['醤油','こいくちしょうゆ','濃口しょうゆ'],'塩':['食塩','あら塩'],'砂糖':['上白糖','きび砂糖'],'酒':['料理酒','清酒'],'サラダ油':['キャノーラ油','なたね油'],'こしょう':['塩こしょう','黒こしょう','コショウ'],'だしの素':['顆粒だし','ほんだし','和風だし']};
+function baseN(s){return String(s).replace(/（.*?）|\(.*?\)/g,'').trim()}
+function haveStock(n){if(!S.stock||!S.stock.length)return null;const f=findFood(n),b=baseN(n),syn=STK_SYN[n]||[];
+  return S.stock.find(s=>s.name===n||baseN(s.name)===b||(f&&s.name===f.n)||syn.some(w=>s.name===w||baseN(s.name)===w))||null}
+var SEAS=[['しょうゆ',500,'本'],['塩',500,'袋'],['砂糖',1000,'袋'],['みそ',750,'パック'],['みりん',500,'本'],['酒',900,'本'],['酢',500,'本'],['サラダ油',600,'本'],['ごま油',200,'本'],['オリーブオイル',400,'本'],['こしょう',20,'本'],['だしの素',50,'袋'],['片栗粉',200,'袋'],['マヨネーズ',350,'本'],['ケチャップ',300,'本'],['ポン酢',360,'本'],['めんつゆ',500,'本'],['ノンオイルドレッシング',380,'本'],['いりごま',60,'袋'],['バター',200,'箱']];
+function isSeas(n){return n!=='オートミール'&&(!!SPOON[n]||SEAS.some(x=>x[0]===n))}
+/* 足りるか：調味料・ごはん・みそ汁は「ある」でOK、それ以外は量も見る */
+function enough(n,g){const s=haveStock(n);if(!s)return false;if(n==='ごはん'||n==='みそ汁'||isSeas(n))return true;return s.g>=g*0.8}
+function missOf(r){return r.ing.filter(([n,g])=>!enough(n,g)).map(([n])=>n).filter((n,i,a)=>a.indexOf(n)===i)}
+function canMake(r){return !missOf(r).length}
+/* これからそろえる人：やり方に合うレシピを5品えらび、その材料を「最初にそろえるもの」にする（材料がなるべく重なるように） */
+function starterKit(){
+  const T=targets(), m=T?T.m:'balance', dp=deepOf(), micro=dp&&dp.kitchen==='micro';
+  const want={locarbo:['lowcarb','protein'],keto:['lowcarb','protein'],lowfat:['lowfat','protein'],highpro:['protein'],gut:['fiber'],med:['fiber','protein'],washoku:['protein','fiber'],replace:['protein','quick']}[m]||['protein','fiber'];
+  let L=RECIPES.filter(r=>r.ing.every(([n])=>foodOK(n)));
+  if(m==='keto')L=L.filter(r=>recT(r).c-recT(r).fi<=15);
+  const sc=r=>r.tags.filter(x=>want.includes(x)).length*2+(r.tags.includes('quick')?0.5:0)+(micro?(r.tags.includes('range')?2:-5):0);
+  const pick=[],have=new Set();
+  while(pick.length<5){let best=null,bs=-1e9;for(const r of L){if(pick.includes(r))continue;const s=sc(r)-r.ing.filter(([n])=>!have.has(n)).length*0.8;if(s>bs){bs=s;best=r}}if(!best)break;pick.push(best);best.ing.forEach(([n])=>have.add(n))}
+  const need={};pick.forEach(r=>r.ing.forEach(([n,g])=>need[n]=(need[n]||0)+g));
+  const names=Object.keys(need);
+  return {m,pick,need,seas:names.filter(isSeas),foods:names.filter(n=>!isSeas(n))};
+}
+function addKit(n,need){
+  const se=SEAS.find(x=>x[0]===n); if(se){addStock(n,se[1],{n:se[2],g:se[1]});return}
+  if(n==='ごはん'){riceFood();addStock(RICE,5000,{n:'合',g:150});return}
+  const u=unitOf(n); const g=Math.max(Math.round((need||100)*2),u?u[1]:100); addStock(n,u?Math.ceil(g/u[1])*u[1]:g,u?{n:u[0],g:u[1]}:null);
+}
+function cookStageHTML(){
+  if(!stockOn()) return '';
+  const st=S.cookStage, nS=SEAS.filter(([n])=>haveStock(n)).length, nF=S.stock.filter(s=>!isSeas(s.name)).length;
+  const seg=`<div class="chips"><button type="button" class="chip" data-stage="have" aria-pressed="${st==='have'}">食材・調味料がもうある</button><button type="button" class="chip" data-stage="start" aria-pressed="${st==='start'}">これからそろえる</button></div>`;
+  if(!st) return `<h3>自炊の準備はどのくらい？</h3><p class="small muted" style="margin:0">答えに合わせて、レシピの出し方を変えます。</p>${seg}`;
+  if(st==='have') return `<details${nS>=5&&nF>=5?'':' open'}><summary><b>冷蔵庫と棚にあるものを全部入れる</b><span class="small muted num">　調味料 ${nS}・食材 ${nF}</span></summary><div class="stack" style="margin-top:8px">${seg}
+   <p class="small" style="margin:0">食材だけでなく、<b>調味料も全部</b>入れてください。入っているものだけで作れるレシピを出します。</p>
+   <b class="small">調味料（あるものを押す）</b><div class="chips">${SEAS.map(([n])=>`<button type="button" class="chip" data-seas="${esc(n)}" aria-pressed="${!!haveStock(n)}">${esc(n)}</button>`).join('')}</div>
+   <p class="small muted" style="margin:0">食材は「レシートで追加」か、下の「手で追加」から。</p></div></details>`;
+  const K=starterKit(), T=targets(), chip=n=>{const h=haveStock(n);return `<button type="button" class="chip" data-kit="${esc(n)}" data-need="${K.need[n]}" aria-pressed="${!!h}">${esc(n)}${!h&&BUYU[n]?`<span class="muted">（${BUYU[n]}）</span>`:''}</button>`};
+  const got=[...K.seas,...K.foods].filter(n=>haveStock(n)).length, all=K.seas.length+K.foods.length;
+  return `<h3>あなたに合う、最初にそろえるもの</h3>${seg}
+   <p class="small" style="margin:0">${T?`やり方「${esc(METHODS[K.m][0])}」`:'ダイエット'}に合わせて選びました。これだけそろえると、下の${K.pick.length}品が作れます。<b>買ったものを押すと在庫に入ります</b>（<span class="num">${got}/${all}</span>）。</p>
+   <b class="small">調味料</b><div class="chips">${K.seas.map(chip).join('')}</div>
+   <b class="small">食材</b><div class="chips">${K.foods.map(chip).join('')}</div>
+   <details><summary class="small"><b>これで作れるレシピ（${K.pick.length}品）</b></summary><div class="stack" style="margin-top:6px">${K.pick.map(r=>rcard(r,'k'+RECIPES.indexOf(r))).join('')}</div></details>`;
+}
+function renderCanCook(){
+  const L=RECIPES.map((r,i)=>({r,i,miss:missOf(r)})).filter(x=>x.r.ing.every(([n])=>foodOK(n)));
+  const ok=L.filter(x=>!x.miss.length), near=L.filter(x=>x.miss.length===1);
+  $('#canCook').innerHTML=`<h3>在庫から作れるもの${ok.length?`<span class="small muted num">（${ok.length}品）</span>`:''}</h3>${!S.stock.length?'<p class="small muted" style="margin:0">冷蔵庫の食材と調味料を入れると、在庫だけで作れるレシピが出ます。</p>':ok.length?`<p class="small muted" style="margin:0">材料も調味料も、全部在庫にあるものだけ。押すと材料と作り方が出ます。</p><div class="stack">${ok.map(x=>rcard(x.r,'s'+x.i)).join('')}</div>`:'<p class="small muted" style="margin:0">在庫だけで作れるレシピは、まだありません。</p>'}
+   ${S.stock.length&&near.length?`<details><summary class="small"><b>あと1つ買えば作れる（${near.length}品）</b></summary><div class="stack" style="margin-top:6px">${near.map(x=>rcard(x.r,'n'+x.i)).join('')}</div></details>`:''}`;
+}
 function rcard(r,key,ai){
-  const t=sum(r.ing.map(([name,g])=>({name,g}))), hv=r.ing.filter(([n,g])=>haveStock(n)&&haveStock(n).g>=g).length, q=encodeURIComponent(r.q||r.n);
+  const t=sum(r.ing.map(([name,g])=>({name,g}))), so=stockOn()&&S.stock.length>0, miss=so?missOf(r):[], q=encodeURIComponent(r.q||r.n);
   return `<details class="rc"${ai?' open':''}><summary>
-   <div class="ttl"><b>${esc(r.n)}</b><span class="row" style="gap:4px;flex:none">${ai?'<span class="pill">AIの提案</span>':''}${hv===r.ing.length?'<span class="pill">在庫で作れる</span>':hv?`<span class="pill warn">在庫 ${hv}/${r.ing.length}</span>`:''}</span></div>
+   <div class="ttl"><b>${esc(r.n)}</b><span class="row" style="gap:4px;flex:none">${ai?'<span class="pill">AIの提案</span>':''}${!so?'':!miss.length?'<span class="pill">在庫で作れる</span>':`<span class="pill warn">足りない：${miss.slice(0,2).map(esc).join('・')}${miss.length>2?` ほか${miss.length-2}`:''}</span>`}</span></div>
    <span class="small num muted">${Math.round(t.k)}kcal ・ たんぱく質 ${r1(t.p)}g ・ 糖質 ${r1(Math.max(0,t.c-t.fi))}g ・ 塩分 ${r1(t.s)}g ・ ${r.min}分</span>${r.why?`<span class="small">${esc(r.why)}</span>`:''}
    ${(r.tags||[]).length?`<span class="tags">${(r.tags||[]).slice(0,3).map(x=>`<span class="tag">${TAGN[x]}</span>`).join('')}${r.tags.length>3?`<span class="tag">ほか${r.tags.length-3}</span>`:''}</span>`:''}</summary>
-   <div class="body"><div><b class="small">材料（1人分）</b><ul class="small" style="margin:4px 0 0;padding-left:1.2em">${r.ing.map(([n,g])=>`<li>${esc(n)} ${amt(n,g)}${haveStock(n)?'<span class="muted">（在庫あり）</span>':''}${findFood(n)?'':'<span class="muted">（カロリーに入っていません）</span>'}</li>`).join('')}<li class="muted">調味料もカロリー・塩分に入っています</li></ul></div>
+   <div class="body"><div><b class="small">材料（1人分）</b><ul class="small" style="margin:4px 0 0;padding-left:1.2em">${r.ing.map(([n,g])=>`<li>${esc(n)} ${amt(n,g)}${so?(enough(n,g)?'<span class="muted">（在庫あり）</span>':'<b style="color:var(--warn)">（在庫なし）</b>'):''}${findFood(n)||isSeas(n)?'':'<span class="muted">（カロリーに入っていません）</span>'}</li>`).join('')}${r.opt&&r.opt.length?`<li class="muted">あれば：${r.opt.map(esc).join('・')}（なくても作れる）</li>`:''}<li class="muted">調味料もカロリー・塩分に入っています</li></ul></div>
    <div><b class="small">作り方</b><ol class="small">${r.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></div>
    <div class="row"><select data-serv="${key}" aria-label="何人分作った？">${[1,2,3,4,5,6].map(n=>`<option value="${n}">${n}人分作った</option>`).join('')}</select><button class="btn pri sm" type="button" data-cook="${key}">作って食べた（在庫からへらす）</button></div>
    <div class="links small"><span class="muted">ほかの作り方：</span><a href="https://cookpad.com/jp/search/${q}" target="_blank" rel="noopener">クックパッド</a><a href="https://www.kurashiru.com/search?query=${q}" target="_blank" rel="noopener">クラシル</a><a href="https://recipe.rakuten.co.jp/search/${q}/" target="_blank" rel="noopener">楽天レシピ</a></div></div></details>`;
 }
 function renderRecipes(){
   const T=targets(), A=advice(dayTotal(TODAY),T);
-  const need=[...new Set(A.map(a=>a.tag).filter(Boolean))];
+  const need=[...new Set(A.map(a=>a.tag).filter(Boolean))], so=stockOn()&&S.stock.length>0;
+  if(rTag==null) rTag=so&&RECIPES.some(r=>canMake(r)&&r.ing.every(([n])=>foodOK(n)))?'stock':'need';
   const opts=[['need','今の自分に合う'],['all','すべて'],['stock','在庫で作れる'],...Object.entries(TAGN)];
   const chip=([k,l])=>`<button type="button" class="chip" data-rt="${k}" aria-pressed="${rTag===k}">${l}</button>`;
   $('#rFilter').innerHTML=opts.slice(0,3).map(chip).join('')+`<details class="more"${TAGN[rTag]?' open':''}><summary class="small">条件でしぼる${TAGN[rTag]?`：${TAGN[rTag]}`:''}</summary><div class="chips" style="margin-top:6px">${opts.slice(3).map(chip).join('')}</div></details>`;
-  let list=RECIPES.map((r,i)=>({r,i,ok:r.ing.every(([n])=>foodOK(n)),hv:r.ing.filter(([n,g])=>haveStock(n)&&haveStock(n).g>=g).length,fit:r.tags.filter(x=>need.includes(x)).length}));
+  let list=RECIPES.map((r,i)=>({r,i,ok:r.ing.every(([n])=>foodOK(n)),miss:so?missOf(r).length:0,fit:r.tags.filter(x=>need.includes(x)).length}));
   const hidden=list.filter(x=>!x.ok).length; list=list.filter(x=>x.ok);
+  const near=list.filter(x=>x.miss===1);
   if(rTag==='need') list=list.filter(x=>x.fit>0||!need.length);
-  else if(rTag==='stock') list=list.filter(x=>x.hv===x.r.ing.length);
+  else if(rTag==='stock') list=so?list.filter(x=>!x.miss):[];
   else if(rTag!=='all') list=list.filter(x=>x.r.tags.includes(rTag));
-  list.sort((a,b)=>(b.fit*2+b.hv/b.r.ing.length)-(a.fit*2+a.hv/a.r.ing.length));
-  $('#recipes').innerHTML=(hidden?`<p class="small muted" style="margin:0">あなたの食事スタイル・苦手なものに合わないレシピを${hidden}件外しています。</p>`:'')+(list.map(x=>rcard(x.r,'r'+x.i)).join('')||'<p class="small muted">合うレシピがありません。「すべて」から選んでください。</p>');
+  list.sort((a,b)=>((a.miss>0)-(b.miss>0))||(a.miss-b.miss)||(b.fit-a.fit));
+  const cut=so?list.findIndex(x=>x.miss>0):-1;
+  const top=stockOn()&&!so?`<div class="card stack" style="gap:8px"><b>自炊する人は、まず冷蔵庫と調味料を入れてください</b><span class="small muted">入っているものだけで作れるレシピを、一番上に出します。まだそろっていなければ、あなたに合う食材と調味料を出します。</span><div><button class="btn sm pri" type="button" data-go="stock">在庫を入れる</button></div></div>`:'';
+  const empty=rTag==='stock'?(so?`<p class="small muted" style="margin:0">在庫だけで作れるレシピは、まだありません。</p>${near.length?`<b class="small">あと1つ買えば作れる</b>${near.map(x=>rcard(x.r,'r'+x.i)).join('')}`:''}`:''):'<p class="small muted">合うレシピがありません。「すべて」から選んでください。</p>';
+  $('#recipes').innerHTML=top+(hidden?`<p class="small muted" style="margin:0">あなたの食事スタイル・苦手なものに合わないレシピを${hidden}件外しています。</p>`:'')+(list.map((x,k)=>(k===cut&&k>0?'<p class="small muted" style="margin:6px 0 0;border-top:1px solid var(--line);padding-top:8px">ここから下は、在庫に無い材料があります（買い足せば作れる）</p>':'')+rcard(x.r,'r'+x.i)).join('')||empty);
   if(AIREC.length) $('#aiRecipes').innerHTML=AIREC.map((r,i)=>rcard(r,'a'+i,true)).join('');
 }
 async function askRecipes(){
@@ -2719,7 +2798,7 @@ async function askRecipes(){
 冷蔵庫の在庫：${S.stock.map(x=>x.name+' '+Math.round(x.g)+'g').join('、')||'なし'}
 今日の判定：${A.map(a=>a.t).join('／')||'特になし'}
 今日の残りの目安：${T?Math.max(0,Math.round(T.kcal-t.k)):600}kcal
-${styleNote()?styleNote()+'\n':''}条件：在庫をなるべく使う。15分以内で作れる簡単なもの。${deepOf()&&deepOf().kitchen==='micro'?'電子レンジだけで作れるもの。':''}材料名は次のリストの名前をできるだけそのまま使う：${FOODS.map(f=>f.n).join('、')}
+${styleNote()?styleNote()+'\n':''}条件：${S.stock.length?'在庫にある食材と調味料だけで作る（在庫に無いものは使わない。水は使ってよい）':'在庫が入っていないので、スーパーで買いやすい食材と基本の調味料で'}。15分以内で作れる簡単なもの。${deepOf()&&deepOf().kitchen==='micro'?'電子レンジだけで作れるもの。':''}材料名は次のリストの名前をできるだけそのまま使う：${FOODS.map(f=>f.n).join('、')}
 次のJSONだけを返してください：{"recipes":[{"name":"料理名","min":10,"why":"この人に合う理由を一言","ing":[["食材名",グラム数]],"steps":["手順","手順","手順"],"q":"料理サイトで検索する言葉"}]}`;
   try{
     const r=await ai(prompt,{cache:false});
@@ -2853,7 +2932,7 @@ function showRecs(){
 function bind(){
   $$('.tab').forEach(b=>b.addEventListener('click',()=>go(b.dataset.v)));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-ox],[data-cand],[data-swap],[data-swapc],[data-swapgo],[data-addx],[data-smenu],[data-smenugo],[data-other],[data-othergo],[data-cook],[data-rt]');if(!t)return;
+    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-ox],[data-cand],[data-swap],[data-swapc],[data-swapgo],[data-addx],[data-smenu],[data-smenugo],[data-other],[data-othergo],[data-cook],[data-rt],[data-stage],[data-seas],[data-kit]');if(!t)return;
     if(t.dataset.plan){planShift++;renderHome()}
     if(t.dataset.pe){const T=targets(),d=S.ans.deep,k=['bf','lunch','dn'][+t.dataset.pe],x=planAll(T,d,dayNum()+planShift)[+t.dataset.pe];if(x&&x.it){const ml={bf:'朝',lunch:'昼',dn:'夜'}[k];if(x.it.cook)useFromStock(x.it.ing.map(([name,g])=>({name,g})));addLog(ml,x.it.n,x.it.ing.map(([name,g])=>({name,g})));toast(`${x.it.n}を記録しました`)}}
     if(t.dataset.go) go(t.dataset.go);
@@ -2899,8 +2978,12 @@ function bind(){
       stEdit=null;undoable(v===0?`${st.name}を消しました`:`${st.name}を${r1(v)}${U[0]}に直しました`,()=>{if(v===0)S.stock=S.stock.filter(x=>x.id!==st.id);else st.g=v*U[1];save();renderStock()})}
     if(t.dataset.stclear){undoable('冷蔵庫を空にしました',()=>{S.stock=[];save();renderStock()})}
     if(t.dataset.dec){const st=S.stock.find(x=>x.id===t.dataset.dec);undoable(`${st?st.name:''}を1つへらしました`,()=>useStock(t.dataset.dec,false))}
-    if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;undoable(`${r.n}を記録しました（在庫からも引きました）`,()=>{useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})))});renderRecipes()}
+    if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;undoable(`${r.n}を記録しました（在庫からも引きました）`,()=>{useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})))});renderRecipes();renderStock();renderShop()}
     if(t.dataset.rt){rTag=t.dataset.rt;renderRecipes()}
+    if(t.dataset.stage){S.cookStage=t.dataset.stage;save();renderShop()}
+    if(t.dataset.seas||t.dataset.kit){const n=t.dataset.seas||t.dataset.kit,s=haveStock(n);
+      if(s)undoable(`${s.name}を在庫から外しました`,()=>{S.stock=S.stock.filter(x=>x!==s);save()});else undoable(`${n}を在庫に入れました`,()=>{addKit(n,+t.dataset.need||0);save()});
+      renderStock();renderShop();renderHome()}
   });
   document.addEventListener('change',e=>{
     if(e.target.dataset.shop!==undefined){S.shop=S.shop||{};S.shop[e.target.dataset.shop]=e.target.checked;save()}
@@ -3075,5 +3158,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610050853').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610050919').catch(()=>{}));</script>
 </body></html>
