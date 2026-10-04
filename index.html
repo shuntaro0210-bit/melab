@@ -466,10 +466,20 @@ header.top .in{padding-block:12px}
     <p class="small muted" id="aiDesc">Claude が写真を読みます。あなたのClaudeのプランの使用量を使うので、キーや追加の登録はいりません。最初の1回だけ「使っていいか」の確認が出ます。</p>
     <p class="status" id="aiStatus">確認中…</p>
     <div class="stack" id="keyBox" style="gap:6px" hidden>
+      <label class="small" for="invCode"><b>招待コード</b></label>
+      <div class="row" style="gap:6px;flex-wrap:nowrap"><input id="invCode" class="inp" autocomplete="off" autocapitalize="off" placeholder="もらったコード" style="flex:1;min-width:0"><button class="btn sm pri" type="button" id="invSave">保存</button></div>
+      <details><summary class="small muted">招待コードがないとき：自分のGoogleのキーを使う</summary><div class="stack" style="gap:6px;margin-top:8px">
       <label class="small" for="gKey"><b>AIのキー（GoogleのAI・無料）</b></label>
       <div class="row" style="gap:6px;flex-wrap:nowrap"><input id="gKey" class="inp" type="password" autocomplete="off" placeholder="AIza で始まる文字" style="flex:1;min-width:0"><button class="btn sm pri" type="button" id="gKeySave">保存</button></div>
       <p class="small muted" style="margin:0">キーは <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> で無料で作れます（カード登録なし）。キーはこのスマホの中だけに保存します。</p>
+      </div></details>
     </div>
+  </div>
+  <div class="stack" id="pushBox" hidden>
+    <h3>通知</h3>
+    <p class="small muted" id="pushSt" style="margin:0" aria-live="polite"></p>
+    <div class="stack" id="pushItems" style="gap:6px"></div>
+    <div class="row"><button class="btn sm pri" type="button" id="pushOn">通知をオンにする</button><button class="btn sm" type="button" id="pushTest">テスト通知</button><button class="btn sm" type="button" id="pushOff">通知をやめる</button></div>
   </div>
   <div class="stack">
     <h3>記録の保存先</h3>
@@ -1912,6 +1922,35 @@ function renderRecent(){RECENT=recentFoods();const el=$('#recentList');if(!el)re
 function cupSVG(on){return `<svg viewBox="0 0 34 42" aria-hidden="true"><path d="M6 6h22l-3 32H9z" fill="${on?'#8fd0f5':'none'}" stroke="${on?'#3a9bd5':'var(--line)'}" stroke-width="2" stroke-linejoin="round"/>${on?'<path d="M9 14h16" stroke="#fff" stroke-width="2" opacity=".6"/>':''}</svg>`}
 function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4px"><b class="small">水・お茶（コップ1杯＝200ml）</b><div class="cups">${[1,2,3,4,5,6,7,8].map(i=>`<button type="button" class="cup" data-cond="water|${w===i?i-1:i}" aria-pressed="${w>=i}" aria-label="${i}杯">${cupSVG(w>=i)}</button>`).join('')}</div><span class="small muted">今日 ${w}杯／目安 8杯（約1.6L）${w<4&&new Date().getHours()>=15?'。少なめ。むくみ・便秘・食べすぎの原因にも':''}</span></div>`}
 
+/* ===== 通知（ホーム画面に入れたアプリだけ。送るのはサーバー） ===== */
+const NOTIF=[['breakfast','朝の記録','08:00'],['lunch','昼の記録','12:30'],['dinner','夜の記録','19:30'],['weigh','体重を測る（月・木の朝）','07:00',[1,4]],['water','水を飲む（午後）','15:00'],['week','1週間のふりかえり（日曜の夜）','20:00',[0]]];
+function notifOf(){S.notif=S.notif||{};NOTIF.forEach(([k,,t])=>{if(!S.notif[k])S.notif[k]={on:k!=='water',t}});return S.notif}
+function notifItems(){const N=notifOf(),out=[];NOTIF.forEach(([k,,,d])=>{const n=N[k];if(!n.on)return;const [h,m]=n.t.split(':').map(Number);out.push({k,h,m,...(d?{d}:{})})});
+  if(S.ans&&S.ans.method==='tre'){const tr=S.tre||{s:12,h:8},e=tr.s+tr.h-0.5;out.push({k:'treStart',h:tr.s%24,m:0},{k:'treEnd',h:Math.floor(e)%24,m:Math.round((e%1)*60)})}
+  return out}
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function pushMsg(m){const el=$('#pushSt');if(el)el.textContent=m}
+function renderPush(){const N=notifOf(),el=$('#pushItems');if(!el)return;
+  el.innerHTML=NOTIF.map(([k,l])=>`<div class="row" style="gap:8px"><label class="small" style="flex:1;display:flex;gap:6px;align-items:center"><input type="checkbox" data-nk="${k}" ${N[k].on?'checked':''}>${l}</label><input type="time" class="inp num" data-nt="${k}" value="${N[k].t}" style="width:7.5em"></div>`).join('')+(S.ans&&S.ans.method==='tre'?'<p class="small muted" style="margin:0">「時間を決める」やり方なので、食べる時間の始まりと終わりにも届きます。</p>':'');
+  pushMsg(!API_BASE?'通知は準備中です。':S.pushOn?'通知オン。決まった時間にコーチから届きます。':'オンにすると、決まった時間にコーチから届きます。');
+  $('#pushTest').hidden=$('#pushOff').hidden=!S.pushOn;$('#pushOn').textContent=S.pushOn?'通知の時間を保存':'通知をオンにする'}
+async function pushSub(){if(!('serviceWorker' in navigator))return null;const reg=await navigator.serviceWorker.ready;return reg.pushManager.getSubscription()}
+async function pushPost(path,body){const r=await fetch(API_BASE+path,{method:'POST',headers:{'Content-Type':'application/json','X-Invite':inviteCode()},body:JSON.stringify(body)}).catch(()=>null);if(!r||!r.ok){const d=r?await r.json().catch(()=>({})):{};throw {code:r?d.error||'unavailable':'network'}}return r.json()}
+async function pushSync(sub){if(!API_BASE||!inviteCode())return;sub=sub||await pushSub().catch(()=>null);if(!sub)return;await pushPost('/push/subscribe',{sub:sub.toJSON?sub.toJSON():sub,tz:Intl.DateTimeFormat().resolvedOptions().timeZone||'Asia/Tokyo',coach:S.coach||'f',items:notifItems()})}
+async function pushEnable(){
+  try{
+    if(!API_BASE) return pushMsg('通知は準備中です。');
+    if(!inviteCode()) return pushMsg('先に上の「招待コード」を入れてください。');
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)) return pushMsg(/iPhone|iPad/.test(navigator.userAgent)&&!standalone()?'iPhoneは、Safariの共有ボタン→「ホーム画面に追加」で入れたアプリを開いてから、ここでオンにしてください。':'この画面では通知が使えません。');
+    const p=await Notification.requestPermission(); if(p!=='granted') return pushMsg('通知が許可されませんでした。スマホの設定→通知→MeLab からオンにできます。');
+    const reg=await navigator.serviceWorker.ready, {key}=await fetch(API_BASE+'/vapid').then(r=>r.json());
+    let sub=await reg.pushManager.getSubscription(); if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:ub64(key)});
+    await pushSync(sub); S.pushOn=true; save(); renderPush(); toast('通知をオンにしました');
+  }catch(e){pushMsg(aiMsg(e)+'。')}
+}
+async function pushTestSend(){try{const sub=await pushSub();if(!sub)return pushMsg('先に通知をオンにしてください。');await pushPost('/push/test',{sub:sub.toJSON()});pushMsg('テスト通知を送りました。数秒で届きます。')}catch(e){pushMsg(aiMsg(e)+'。')}}
+async function pushDisable(){try{const sub=await pushSub();if(sub){await pushPost('/push/unsubscribe',{sub:sub.toJSON()}).catch(()=>{});await sub.unsubscribe()}}catch(e){}S.pushOn=false;save();renderPush();toast('通知をやめました')}
+
 /* ===== 画面 ===== */
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,m.length>30?5000:2600)}
@@ -2026,6 +2065,15 @@ function setMode(m){
 }
 let SAMPLE=null, DOC=null, REAL=null;
 const APP=!(window.claude&&window.claude.use); /* claude.ai の外（スマホのアプリとして開いたとき） */
+const API_BASE=''; /* Cloudflare に置いたサーバーのアドレス */
+const INV='melab-invite';
+function inviteCode(){try{return localStorage.getItem(INV)||''}catch(e){return ''}}
+function ub64(x){x=x.replace(/-/g,'+').replace(/_/g,'/');while(x.length%4)x+='=';const b=atob(x),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+async function relay(contents,json){
+  const r=await fetch(API_BASE+'/ai',{method:'POST',headers:{'Content-Type':'application/json','X-Invite':inviteCode()},body:JSON.stringify({contents,json})}).catch(()=>null);
+  if(!r) throw {code:'network'}; const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw {code:d.error||'unavailable'}; return d.text;
+}
 const GKEY='melab-gemini-key';
 function gkey(){try{return localStorage.getItem(GKEY)||''}catch(e){return ''}}
 async function imgPart(f){
@@ -2034,6 +2082,7 @@ async function imgPart(f){
 }
 const GMODELS=['gemini-flash-latest','gemini-2.5-flash','gemini-2.0-flash'];
 async function gemini(contents,json){
+  if(API_BASE&&inviteCode()) return relay(contents,json);
   const key=gkey(); if(!key) throw {code:'no_key'}; let last={code:'unavailable'};
   for(const m of GMODELS){
     const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents,generationConfig:json?{responseMimeType:'application/json',temperature:0.3}:{temperature:0.7}})}).catch(()=>null);
@@ -2055,7 +2104,7 @@ function geminiSample(){
   fn.limits=async()=>({images:true}); return fn;
 }
 const AIERR={not_granted:'AIの使用が許可されていません（設定から確認できます）',rate_limited:'今は使いすぎで、少し待つ必要があります。時間をおいて試してください',image_rejected:'この写真は読めませんでした。別の写真で試してください',invalid_json:'うまく読み取れませんでした。もう一度試してください',refused:'この写真は読み取れませんでした',unavailable:'この画面ではAIが使えません（claude.ai のリンクから開いてください）',images_unavailable:'この画面では写真をAIに送れません',session_expired:'Claudeにもう一度ログインしてください',empty_completion:'答えが返ってきませんでした。もう一度試してください'};
-const AIERR2={no_key:'AIのキーが入っていません。右上の「設定」→「AIのキー」から入れてください',bad_key:'AIのキーが正しくないようです。設定で入れ直してください',network:'ネットにつながっていません。電波のいい所でもう一度'};
+const AIERR2={bad_invite:'招待コードが違うようです。設定で入れ直してください',server_key:'AIの準備に問題があります。運営に知らせてください',too_big:'写真が大きすぎます。枚数を減らしてください',no_key:'AIが使えるようになっていません。右上の「設定」で招待コードかキーを入れてください',bad_key:'AIのキーが正しくないようです。設定で入れ直してください',network:'ネットにつながっていません。電波のいい所でもう一度'};
 const aiMsg=e=>AIERR2[e&&e.code]||AIERR[e&&e.code]||'AIにつながりませんでした。少ししてからもう一度試してください';
 async function ai(prompt,opts){if(!SAMPLE) throw {code:APP?'no_key':'unavailable'};return SAMPLE.json(prompt,opts||{})}
 function prompts(){
@@ -2387,6 +2436,9 @@ function bind(){
   $('#photoBox').addEventListener('change',e=>{if(e.target.id==='phIn'&&e.target.files[0])addBodyPhoto(e.target.files[0])});
   $('#photoBox').addEventListener('click',photoClick);
   $('#chatBtn').addEventListener('click',()=>askCoach($('#chatIn').value));
+  $('#invSave').addEventListener('click',()=>{const v=$('#invCode').value.trim();try{v?localStorage.setItem(INV,v):localStorage.removeItem(INV)}catch(e){}$('#invCode').value='';appAI();if(S.pushOn)pushSync().catch(()=>{});toast(v?'招待コードを保存しました':'招待コードを消しました')});
+  $('#pushOn').addEventListener('click',pushEnable);$('#pushTest').addEventListener('click',pushTestSend);$('#pushOff').addEventListener('click',pushDisable);
+  $('#pushItems').addEventListener('change',e=>{const N=notifOf(),c=e.target.closest('[data-nk]'),t=e.target.closest('[data-nt]');if(c)N[c.dataset.nk].on=c.checked;if(t&&t.value)N[t.dataset.nt].t=t.value;save();if(S.pushOn)pushSync().catch(()=>{})});
   $('#gKeySave').addEventListener('click',()=>{const v=$('#gKey').value.trim();try{v?localStorage.setItem(GKEY,v):localStorage.removeItem(GKEY)}catch(e){}$('#gKey').value='';appAI();toast(v?'キーを保存しました':'キーを消しました')});
   $('#expBtn').addEventListener('click',()=>{const t='MELAB1:'+JSON.stringify(S);const done=()=>toast('記録をコピーしました。もう一方の版の設定で貼り付けてください');
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done).catch(()=>{$('#impTxt').value=t;$('#impTxt').select();toast('下の欄の文字を全部コピーしてください')});else{$('#impTxt').value=t;$('#impTxt').select();toast('下の欄の文字を全部コピーしてください')}});
@@ -2395,7 +2447,7 @@ function bind(){
     if(!st||typeof st!=='object'||!st.logs){$('#impSt').textContent='MeLabの記録ではないようです';return}
     if(!impAsk){impAsk=true;$('#impBtn').textContent='今の記録を上書きします。もう一度押すと読み込み';return}
     impAsk=false;$('#impBtn').textContent='貼り付けた記録を読み込む';S=st;S.sample=false;save();$('#impTxt').value='';$('#impSt').textContent='読み込みました';renderAll();toast('記録を読み込みました')});
-  $('#treCard').addEventListener('click',e=>{const c=e.target.closest('[data-tre]');if(!c)return;const [a,h]=c.dataset.tre.split('|').map(Number);S.tre={s:a,h};save();renderTre()});
+  $('#treCard').addEventListener('click',e=>{const c=e.target.closest('[data-tre]');if(!c)return;const [a,h]=c.dataset.tre.split('|').map(Number);S.tre={s:a,h};save();renderTre();if(S.pushOn)pushSync().catch(()=>{})});
   setInterval(()=>{if(!$('#v-home').hidden)renderTre()},60000);
   $('#tdeeCard').addEventListener('click',e=>{const b=e.target.closest('[data-tdee]');if(!b)return;if(b.dataset.tdee==='on'){const R=realTdee();if(R&&R.real)S.ans.tdeeReal=R.real;toast('目安を、あなたの本当の消費に合わせました')}else{delete S.ans.tdeeReal;toast('計算式の目安に戻しました')}save();renderHome();renderFuture()});
   $('#recentList').addEventListener('click',e=>{const b=e.target.closest('[data-again]');if(!b)return;const r=RECENT[+b.dataset.again];if(!r)return;addLog($('#mealSel').value||mealNow(),r.t,JSON.parse(JSON.stringify(r.items)),$('#mealDate').value||TODAY,r.dr?{dr:r.dr}:undefined);toast(`${r.t}を記録しました`);renderRecent()});
@@ -2461,12 +2513,13 @@ function bind(){
 S=load()||sampleState();
 function renderAll(){renderHome();const v=($$('.tab').find(b=>b.getAttribute('aria-selected')==='true')||{}).dataset?.v;if(v&&v!=='home')go(v);$('#startOwn').textContent=REAL?'自分の記録に戻る':'自分で始める'}
 function appAI(){
-  SAMPLE=gkey()?geminiSample():null; $('#readBtn').disabled=false;
+  const inv=!!(API_BASE&&inviteCode()); SAMPLE=inv||gkey()?geminiSample():null; $('#readBtn').disabled=false;
   $('#aiDesc').textContent='GoogleのAI（Gemini）が写真を読みます。無料の範囲（1日数百回まで）で使えます。無料の範囲では、送った写真や文がGoogleのAIの改善に使われることがあります。';
-  $('#keyBox').hidden=false; $('#aiStatus').textContent=SAMPLE?'使えます。':'まだ使えません。下にキーを入れてください。';
+  $('#keyBox').hidden=false; $('#aiStatus').textContent=inv?'使えます（招待コード）。':SAMPLE?'使えます（自分のキー）。':'まだ使えません。下に招待コードを入れてください。';
+  $('#pushBox').hidden=false; renderPush();
 }
 async function connect(){
-  if(APP){appAI();saveMsg('このスマホの中だけに保存しています。機種変更の前は「記録を書き出す」で控えを取ってください。');return}
+  if(APP){appAI();if(S.pushOn)pushSync().catch(()=>{});saveMsg('このスマホの中だけに保存しています。機種変更の前は「記録を書き出す」で控えを取ってください。');return}
   const use=window.claude&&window.claude.use?n=>window.claude.use(n).catch(()=>null):async()=>null;
   const [sm,db,user]=await Promise.all([use('sample'),use('db'),use('user')]);
   SAMPLE=sm;
@@ -2495,5 +2548,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041453').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041508').catch(()=>{}));</script>
 </body></html>
