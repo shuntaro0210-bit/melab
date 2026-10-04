@@ -109,8 +109,8 @@ nav.tabs .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:re
 .drop .ico{width:40px;height:40px;stroke:var(--accent);fill:none;stroke-width:1.6}
 .preview{max-height:220px;width:100%;object-fit:cover;border-radius:12px}
 .items{display:flex;flex-direction:column;gap:8px}
-.item{display:grid;grid-template-columns:minmax(0,1fr) auto auto 24px;gap:6px;align-items:center}
-.item .small{white-space:nowrap}.item input[type=number]{width:3.4em!important}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto 4.6em 24px;gap:6px;align-items:center}
+.item .small{white-space:nowrap}.item>.row .small{min-width:2.2em}.item>.num{text-align:right}.swapb{border:0;background:none;padding:0;text-align:left;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}.item input[type=number]{width:3.4em!important}
 .item .nm{min-width:0;overflow-wrap:anywhere}
 .item input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 8px;text-align:right}
 .item .x{border:0;background:none;color:var(--muted);cursor:pointer}
@@ -577,6 +577,92 @@ const CUTS=[['牛タン','11090','人前',70,['タン塩','牛たん']],['牛ハ
  ['牛レバー','11092','人前',80,[]],['牛ハツ','11091','人前',80,[]],['豚トロ','11312','人前',100,['トントロ']],['豚バラ（焼肉）','11129','人前',100,['サムギョプサル']],['豚タン','11164','人前',70,[]],['豚ホルモン','11169','人前',80,[]],
  ['焼き鳥 もも','11221','本',30,['ねぎま','もも串']],['焼き鳥 むね','11219','本',30,['むね串']],['つくね','11230','本',40,['つくね串']],['鶏皮','11235','本',25,['皮串','とりかわ']],['鶏レバー','11232','本',30,['レバー串']],
  ['鶏ハツ','11231','本',25,['ハツ串']],['砂肝','11233','本',30,['砂ずり','すなぎも']],['鶏なんこつ','11236','本',25,['なんこつ']],['ささみ串','11227','本',30,[]],['手羽先','11285','本',40,['手羽']]];
+/* きのこ。[名前, 成分表の番号, 単位, 1単位のg, 別の言い方] */
+const KINOKO=[['えのき','08001','袋',100,['えのきたけ','えのき茸']],['しいたけ','08039','個',15,['椎茸','生しいたけ']],['まいたけ','08028','パック',100,['舞茸']],['エリンギ','08025','本',40,[]],
+ ['マッシュルーム','08031','個',10,[]],['なめこ','08020','袋',100,[]],['きくらげ','08007','',0,['木耳']]];
+/* 寿司。1貫＝シャリ（ごはん18g＋すし酢1.5g）＋ネタ。巻物1本＝6切れ（ごはん80g＋すし酢6g＋具＋のり2g）。[名前, 単位, [[番号,g]…], 別の言い方] */
+const SR=[['01088',18],['17102',1.5]], SR6=[['01088',80],['17102',6],['09004',2]], NORI=[['09004',1]];
+const SUSHI=[['まぐろ（握り）','貫',[['10253',15]],['まぐろ赤身','赤身（寿司）']],['中トロ（握り）','貫',[['10253',7.5],['10254',7.5]],['中トロ']],['大トロ（握り）','貫',[['10254',15]],['大トロ']],
+ ['サーモン（握り）','貫',[['10144',15]],['炙りサーモン']],['はまち（握り）','貫',[['10243',15]],[]],['ぶり（握り）','貫',[['10241',15]],[]],['真鯛（握り）','貫',[['10193',12]],['鯛（寿司）']],['ひらめ（握り）','貫',[['10234',12]],['えんがわ']],
+ ['いか（握り）','貫',[['10418',12]],[]],['たこ（握り）','貫',[['10362',12]],[]],['えび（握り）','貫',[['10322',12]],[]],['甘えび（握り）','貫',[['10319',12]],[]],['ほたて（握り）','貫',[['10313',15]],[]],
+ ['穴子（握り）','貫',[['10016',15]],[]],['うなぎ（握り）','貫',[['10070',15]],[]],['かつお（握り）','貫',[['10086',15]],[]],['しめさば（握り）','貫',[['10163',15]],[]],['あじ（握り）','貫',[['10003',12]],[]],
+ ['いわし（握り）','貫',[['10047',12]],[]],['玉子（握り）','貫',[['12018',20]],[]],['うに（軍艦）','貫',[['10365',10],...NORI],[]],['いくら（軍艦）','貫',[['10140',15],...NORI],[]],['ねぎとろ（軍艦）','貫',[['10253',6],['10254',6],...NORI],[]],
+ ['かっぱ巻','本',[['06065',20]],[]],['鉄火巻','本',[['10253',30]],[]],['納豆巻','本',[['04046',25]],[]]];
+const KEYS9=['k','p','f','c','fi','s','kp','ca','fe','vd','b12','vc','fol'];
+{const byId=Object.fromEntries(MEXT.map(r=>[r[0],r]));
+  for(const [n,id,u,g,a] of KINOKO){const r=byId[id];if(!r||FOODS.some(f=>f.n===n))continue;FOODS.push({n,id,...Object.fromEntries(KEYS9.map((k,i)=>[k,r[2+i]])),...(u?{u:[u,g]}:{}),a})}
+  for(const [n,u,parts,a] of SUSHI){if(FOODS.some(f=>f.n===n))continue;const all=[...(u==='本'?SR6:SR),...parts];let G=0;const t=Object.fromEntries(KEYS9.map(k=>[k,0]));
+    for(const [id,g] of all){const r=byId[id];if(!r)continue;G+=g;KEYS9.forEach((k,i)=>t[k]+=(+r[2+i]||0)*g/100)}
+    if(G)FOODS.push({n,id:'sushi',...Object.fromEntries(KEYS9.map(k=>[k,Math.round(t[k]/G*1000)/10])),u:[u,Math.round(G*10)/10],a})}}
+/* 成分表から足す食材。[名前, 番号, 単位, 1単位のg, 別の言い方] */
+const EXTRA=[['コーン','06176','',0,['スイートコーン']],['天かす','01172','',0,['揚げ玉']],['油揚げ','04040','枚',30,['きつね（油揚げ）']],['温泉卵','12005','個',50,['温玉']],['えび天ぷら','10416','本',30,['えび天','海老天']],
+ ['プロセスチーズ','13040','枚',18,['スライスチーズ','チーズ']],['粉チーズ','13038','大さじ',6,['パルメザンチーズ']],['キムチ','06236','小皿',50,['白菜キムチ']],['もやしナムル','18039','小皿',50,['ナムル']],['サンチュ','06315','枚',10,[]],
+ ['もち','01117','個',50,['切りもち','お餅']],['白菜','06233','枚',100,['はくさい']],['春菊','06099','',0,['しゅんぎく']],['大根','06134','',0,['だいこん']],['たら','10205','切れ',80,['まだら','鱈']],['つみれ','10383','個',20,[]],
+ ['ちくわ','10381','本',30,['竹輪']],['はんぺん','10385','枚',100,[]],['がんもどき','04041','個',60,[]],['しらたき','02005','袋',200,['糸こんにゃく']],['もつ（牛小腸）','11098','人前',100,['もつ']],['豚ばら','11129','',0,['豚バラ','豚ばら肉']],
+ ['とんかつ','11276','枚',130,['ロースかつ']],['ぎょうざ','18002','個',25,['餃子']],['フライドポテト','02067','人前',135,['ポテトフライ']],['チキンナゲット','11292','個',20,['ナゲット']],['中濃ソース','17002','大さじ',18,['ソース']],
+ ['お好み焼きソース','17085','大さじ',18,['お好みソース']],['青のり','09002','',0,['あおのり']],['紅しょうが','06104','',0,['紅生姜']],['ガリ','06105','',0,['しょうが甘酢漬']],['スパゲッティ（ゆで）','01064','人前',250,['スパゲッティ','パスタ']],
+ ['ほっけ','10412','枚',200,['ほっけ焼き']],['福神漬','06143','',0,['福神漬け']],['ほうれん草（ゆで）','06268','',0,[]],['焼きおにぎり','01112','個',80,[]],['ラム肉','11199','人前',100,['ジンギスカン','マトン']],
+ ['だし巻き玉子','12019','切れ',30,['だし巻き']],['卵焼き','12018','切れ',30,['玉子焼き','厚焼き玉子']],['冷奴','04032','丁',150,['冷やっこ']],['牛丼の具','18031','人前',120,['牛丼の頭']],['親子丼の具','18030','人前',150,[]]];
+/* 成分表に無いもの（AIの目安）。[名前, 単位, 1単位のg, kcal, たんぱく質, 脂質, 炭水化物, 食塩g]（1単位あたり） */
+const EST=[['スープ（醤油ラーメン）','杯',350,130,5,8,8,6.0],['スープ（塩ラーメン）','杯',350,110,4,7,6,6.2],['スープ（味噌ラーメン）','杯',350,230,9,12,20,7.5],['スープ（豚骨ラーメン）','杯',350,300,9,25,8,6.5],
+ ['スープ（家系ラーメン）','杯',350,380,10,33,8,7.5],['スープ（二郎系ラーメン）','杯',400,420,12,36,12,8.5],['スープ（担々麺）','杯',350,420,12,33,18,6.5],['スープ（魚介豚骨ラーメン）','杯',350,320,10,25,12,6.8],
+ ['スープ（鶏白湯ラーメン）','杯',350,280,11,20,10,6.0],['スープ（タンメン）','杯',350,140,5,9,9,6.5],['スープ（ちゃんぽん）','杯',350,230,8,16,12,6.5],['つけ汁（つけ麺）','杯',250,230,8,15,15,6.5],
+ ['たれ（冷やし中華）','杯',60,70,1,3,10,4.0],['たれ（油そば）','杯',50,220,2,22,5,4.0],
+ ['だし（寄せ鍋）','杯',200,30,2,0.5,4,2.8],['だし（水炊き）','杯',200,40,4,2,1,0.8],['だし（もつ鍋）','杯',200,90,3,6,6,3.5],['だし（キムチ鍋）','杯',200,90,4,5,8,4.0],['だし（しゃぶしゃぶ）','杯',200,10,1,0,1,0.3],
+ ['割下（すき焼き）','杯',60,120,3,0,25,4.5],['だし（ちゃんこ鍋）','杯',200,60,4,3,4,3.0],['だし（豆乳鍋）','杯',200,120,7,6,8,2.5],['だし（湯豆腐）','杯',200,5,0.5,0,0.5,0.3],['だし（おでん）','杯',200,20,2,0,3,2.5],
+ ['だし（石狩鍋）','杯',200,80,5,3,8,3.5],['だし（カレー鍋）','杯',200,150,3,9,14,3.0],['だし（トマト鍋）','杯',200,90,3,4,10,2.5],['だし（ちり鍋）','杯',200,10,1,0,1,0.3],['だし（鶏白湯鍋）','杯',200,150,8,10,5,2.5],
+ ['つゆ（かけ）','杯',350,60,3,0,9,5.5],['つゆ（カレーうどん）','杯',350,250,6,12,28,5.5],['つけつゆ（ざる・もり）','杯',60,40,1.5,0,7,2.6],['つゆ（ぶっかけ）','杯',60,35,1,0,6,2.0],['だししょうゆ（釜玉）','杯',15,10,0.5,0,2,1.3],
+ ['わかめスープ','杯',200,30,2,1,3,1.8],['中華スープ','杯',200,15,1,0.5,2,1.5],['冷麺','杯',600,500,18,6,95,6.5],['ビビンバ','杯',400,550,18,18,80,3.5],['茶わん蒸し','個',150,80,7,4,4,1.0],
+ ['あら汁','杯',200,50,5,2,3,2.0],['ポテトサラダ','小皿',80,130,2,10,9,0.8],['シーザーサラダ','人前',150,190,6,15,8,1.2],['もつ煮','小鉢',150,200,12,13,9,2.2],['たこわさ','小鉢',50,50,7,0.5,4,1.5],
+ ['ハンバーガー','個',110,260,13,10,30,1.4],['チーズバーガー','個',120,310,16,14,31,1.8],['フライドチキン','ピース',90,240,18,15,8,1.5],['シェイク','杯',300,320,7,8,55,0.4],['ドーナツ','個',60,250,3,14,28,0.4]];
+{const byId=Object.fromEntries(MEXT.map(r=>[r[0],r]));
+  for(const [n,id,u,g,a] of EXTRA){const r=byId[id];if(!r||FOODS.some(f=>f.n===n))continue;FOODS.push({n,id,...Object.fromEntries(KEYS9.map((k,i)=>[k,r[2+i]])),...(u?{u:[u,g]}:{}),a})}
+  for(const [n,u,g,k,pp,ff,cc,ss] of EST){if(FOODS.some(f=>f.n===n))continue;const x=100/g;FOODS.push({n,id:'est',est:1,k:k*x,p:pp*x,f:ff*x,c:cc*x,fi:0,s:ss*x,kp:0,ca:0,fe:0,vd:0,b12:0,vc:0,fol:0,u:[u,g],a:[]})}}
+const GROUPS=[KINOKO.map(x=>x[0]).concat('しめじ'),SUSHI.filter(x=>x[1]==='貫').map(x=>x[0]),SUSHI.filter(x=>x[1]==='本').map(x=>x[0]),CUTS.filter(x=>x[2]==='人前').map(x=>x[0]),CUTS.filter(x=>x[2]==='本').map(x=>x[0])];
+const groupOf=n=>{const D=pending&&pending.ex&&DISH[pending.ex.kind];if(D&&D.swap)return D.swap.filter(x=>findFood(x));return GROUPS.find(g=>g.includes(n))||null};
+/* 料理の種類ごとに：種類（t）・めん（noodle）・スープ（soup）・種類で決まる具（base）・ごはんの量（rice）・追加（adds）・入れかえ候補（swap）・聞くこと（q） */
+const NAB_IN=['白菜','ねぎ','春菊','にんじん','大根','えのき','しいたけ','しめじ','まいたけ','豆腐（木綿）','しらたき','鶏もも肉（皮つき）','豚ばら','牛ばら','もつ（牛小腸）','たら','つみれ','ちくわ','はんぺん','がんもどき','厚揚げ','こんにゃく','卵','もち','キムチ'];
+const DISH={
+ ramen:{l:'ラーメン',t:['醤油','塩','味噌','豚骨','家系','二郎系','担々麺','魚介豚骨','鶏白湯','タンメン','ちゃんぽん','つけ麺','冷やし中華','油そば'],q:['drink','size'],
+   noodle:{n:'中華めん（ゆで）',g:230,by:{'二郎系':400,'つけ麺':300},re:/中華めん|ラーメン|ラーメン麺|麺$|めん$/},soup:t=>({'つけ麺':'つけ汁（つけ麺）','冷やし中華':'たれ（冷やし中華）','油そば':'たれ（油そば）','担々麺':'スープ（担々麺）','タンメン':'スープ（タンメン）','ちゃんぽん':'スープ（ちゃんぽん）'}[t]||`スープ（${t}ラーメン）`),
+   adds:[['チャーシュー追加',[['チャーシュー',30]]],['味玉',[['ゆで卵',50]]],['のり',[['のり',3]]],['メンマ',[['メンマ',15]]],['ねぎ多め',[['ねぎ',20]]],['もやし',[['もやし',50]]],['コーン',[['コーン',20]]],['バター',[['バター',10]]],['半ライス',[['ごはん',100]]],['ライス',[['ごはん',200]]],['餃子3個',[['ぎょうざ',75]]],['餃子6個',[['ぎょうざ',150]]]],
+   swap:['チャーシュー','ゆで卵','のり','メンマ','ねぎ','もやし','キャベツ','コーン','バター','ほうれん草（ゆで）','ごはん','ぎょうざ']},
+ udon:{l:'うどん・そば',t:['かけ','きつね','たぬき','天ぷら','月見','肉','カレー','わかめ','ざる・もり','ぶっかけ','釜玉','鍋焼き'],q:['men','drink','size'],
+   noodle:{n:'うどん（ゆで）',g:200,re:/うどん|そば|蕎麦|饂飩/},soup:t=>({'ざる・もり':'つけつゆ（ざる・もり）','ぶっかけ':'つゆ（ぶっかけ）','釜玉':'だししょうゆ（釜玉）','カレー':'つゆ（カレーうどん）'}[t]||'つゆ（かけ）'),
+   base:{'きつね':[['油揚げ',30]],'たぬき':[['天かす',10]],'天ぷら':[['えび天ぷら',60]],'月見':[['卵',50]],'肉':[['牛ばら',50]],'わかめ':[['わかめ（水もどし）',20]],'釜玉':[['卵',50]],'鍋焼き':[['えび天ぷら',30],['卵',50],['しいたけ',15]]},
+   adds:[['えび天',[['えび天ぷら',30]]],['かき揚げ',[['天かす',40],['玉ねぎ',30]]],['温玉',[['温泉卵',50]]],['ちくわ天',[['ちくわ',30],['天かす',10]]],['いなり1個',[['ごはん',40],['油揚げ',15]]],['おにぎり',[['おにぎり',110]]],['ねぎ多め',[['ねぎ',15]]]],
+   swap:['えび天ぷら','天かす','油揚げ','卵','温泉卵','牛ばら','ねぎ','わかめ（水もどし）','ちくわ','しいたけ','ごはん','おにぎり']},
+ nabe:{l:'鍋',t:['寄せ鍋','水炊き','もつ鍋','キムチ鍋','しゃぶしゃぶ','すき焼き','ちゃんこ鍋','豆乳鍋','湯豆腐','おでん','石狩鍋','カレー鍋','トマト鍋','ちり鍋','鶏白湯鍋'],q:['dip','drink'],
+   soup:t=>t==='すき焼き'?'割下（すき焼き）':`だし（${t}）`,dip:['水炊き','しゃぶしゃぶ','湯豆腐','ちり鍋'],base:{'すき焼き':[['卵',50]]},
+   adds:[['しめ：雑炊',[['ごはん',100],['卵',25]]],['しめ：うどん',[['うどん（ゆで）',200]]],['しめ：ラーメン',[['中華めん（ゆで）',150]]],['しめ：ちゃんぽん麺',[['中華めん（ゆで）',200]]],['しめ：もち',[['もち',50]]],['ごはん',[['ごはん',150]]]],
+   swap:NAB_IN},
+ sushi:{l:'寿司',t:['回転寿司','お店の握り','ちらし寿司','海鮮丼','手巻き寿司','いなり寿司'],q:['shoyu'],
+   adds:[['みそ汁',[['みそ汁',150]]],['あら汁',[['あら汁',200]]],['茶わん蒸し',[['茶わん蒸し',150]]],['ガリ',[['ガリ',10]]]],swap:null},
+ yakiniku:{l:'焼肉',t:['牛焼肉','豚焼肉','ホルモン','ジンギスカン','サムギョプサル'],q:['tare'],
+   adds:[['ライス小',[['ごはん',150]]],['ライス中',[['ごはん',200]]],['ライス大',[['ごはん',300]]],['キムチ',[['キムチ',50]]],['ナムル',[['もやしナムル',50]]],['サンチュ',[['サンチュ',30]]],['わかめスープ',[['わかめスープ',200]]],['冷麺',[['冷麺',600]]],['ビビンバ',[['ビビンバ',400]]]],swap:null},
+ yakitori:{l:'焼き鳥',t:['焼き鳥'],q:['tare'],adds:[['キャベツ',[['キャベツ',50]]],['焼きおにぎり',[['焼きおにぎり',80]]],['鶏スープ',[['中華スープ',200]]]],swap:null},
+ don:{l:'丼',t:['牛丼','豚丼','親子丼','カツ丼','天丼','海鮮丼','ねぎとろ丼','うな丼','中華丼','麻婆丼','他人丼','ローストビーフ丼'],q:['rice'],rice:[['小盛',180],['並',250],['大盛',350],['特盛',450]],
+   adds:[['生卵',[['卵',50]]],['温玉',[['温泉卵',50]]],['みそ汁',[['みそ汁',150]]],['チーズ',[['プロセスチーズ',18]]],['キムチ',[['キムチ',50]]],['紅しょうが',[['紅しょうが',10]]]],
+   swap:['ごはん','牛ばら','豚ばら','玉ねぎ','卵','とんかつ','えび天ぷら','鶏もも肉（皮つき）','紅しょうが','みそ汁']},
+ curry:{l:'カレー',t:['ビーフ','ポーク','チキン','キーマ','カツカレー','スープカレー','グリーンカレー','バターチキン'],q:['rice'],rice:[['200g',200],['300g',300],['400g',400],['500g',500]],
+   adds:[['カツ',[['とんかつ',130]]],['チーズ',[['プロセスチーズ',36]]],['ゆで卵',[['ゆで卵',50]]],['から揚げ',[['から揚げ',90]]],['ほうれん草',[['ほうれん草（ゆで）',40]]],['福神漬',[['福神漬',10]]]],
+   swap:['ごはん','とんかつ','プロセスチーズ','ゆで卵','から揚げ','ほうれん草（ゆで）','福神漬','玉ねぎ','にんじん']},
+ teishoku:{l:'定食',t:['から揚げ定食','生姜焼き定食','とんかつ定食','焼き魚定食','刺身定食','ハンバーグ定食','天ぷら定食','チキン南蛮定食','さばの味噌煮定食','野菜炒め定食'],q:['rice'],rice:[['少なめ',150],['普通',200],['大盛り',300],['おかわり',400]],
+   base:{'*':[['みそ汁',150]]},adds:[['小鉢',[['もやしナムル',50]]],['漬物',[['福神漬',10]]],['生卵',[['卵',50]]],['納豆',[['納豆',45]]]],swap:['ごはん','みそ汁','キャベツ','から揚げ','とんかつ','卵','納豆']},
+ chuka:{l:'中華',t:['餃子','チャーハン','麻婆豆腐','酢豚','回鍋肉','青椒肉絲','エビチリ','天津飯','中華丼','八宝菜','春巻き','焼きそば'],q:[],
+   adds:[['ライス',[['ごはん',200]]],['中華スープ',[['中華スープ',200]]],['餃子3個',[['ぎょうざ',75]]],['餃子6個',[['ぎょうざ',150]]]],swap:['ごはん','ぎょうざ','中華スープ','卵']},
+ pasta:{l:'パスタ',t:['ミートソース','カルボナーラ','ペペロンチーノ','ナポリタン','たらこ','ボンゴレ','ジェノベーゼ','トマトクリーム','和風きのこ'],q:['size'],
+   noodle:{n:'スパゲッティ（ゆで）',g:250,re:/スパゲッティ|パスタ|マカロニ|リングイネ|フェットチーネ/},adds:[['粉チーズ',[['粉チーズ',6]]],['パン',[['食パン',30]]],['サラダ',[['レタス',30],['トマト',30]]]],swap:['スパゲッティ（ゆで）','粉チーズ','ベーコン','卵','しめじ','玉ねぎ']},
+ kona:{l:'お好み焼き・粉もの',t:['お好み焼き','広島焼き','もんじゃ焼き','たこ焼き','ねぎ焼き'],q:['kona'],
+   adds:[['そば入り',[['中華めん（ゆで）',100]]],['うどん入り',[['うどん（ゆで）',100]]],['チーズ',[['プロセスチーズ',18]]],['もち',[['もち',50]]],['青のり・かつお節',[['青のり',1],['かつお節',1]]]],swap:['キャベツ','豚ばら','卵','中華めん（ゆで）','もち','プロセスチーズ','紅しょうが','天かす']},
+ izakaya:{l:'居酒屋',t:['居酒屋'],q:[],adds:[['お通し',[['もやしナムル',40]]]],swap:['枝豆','から揚げ','冷奴','フライドポテト','ほっけ','だし巻き玉子','キムチ','ぎょうざ','ポテトサラダ','シーザーサラダ','もつ煮','たこわさ','焼きおにぎり','焼き鳥 もも','鶏皮','つくね']},
+ fastfood:{l:'ファストフード',t:['ハンバーガー','フライドチキン','牛丼チェーン','ドーナツ'],q:[],adds:[['ポテトS',[['フライドポテト',74]]],['ポテトM',[['フライドポテト',135]]],['ポテトL',[['フライドポテト',170]]],['ナゲット5個',[['チキンナゲット',100]]],['シェイク',[['シェイク',300]]]],
+   swap:['ハンバーガー','チーズバーガー','フライドポテト','チキンナゲット','フライドチキン','シェイク','ドーナツ']}
+};
+DISH.yakiniku.swap=CUTS.filter(x=>x[2]==='人前').map(x=>x[0]).concat(['ラム肉','ごはん','キムチ','もやしナムル','サンチュ','わかめスープ','冷麺','ビビンバ']);
+DISH.yakitori.swap=CUTS.filter(x=>x[2]==='本').map(x=>x[0]).concat(['キャベツ','焼きおにぎり']);
+DISH.sushi.swap=SUSHI.map(x=>x[0]).concat(['みそ汁','あら汁','茶わん蒸し','ガリ']);
+
 {const byId=Object.fromEntries(MEXT.map(r=>[r[0],r]));for(const [n,id,u,g,a] of CUTS){const r=byId[id];if(!r||FOODS.some(f=>f.n===n))continue;
   FOODS.push({n,id,k:r[2],p:r[3],f:r[4],c:r[5],fi:r[6],...Object.fromEntries(['s','kp','ca','fe','vd','b12','vc','fol'].map((k,i)=>[k,r[7+i]])),u:[u,g],a});}} /* NK と同じ順 */
 const FMAP=Object.fromEntries(FOODS.map(f=>[f.n,f]));
@@ -626,13 +712,14 @@ function convApply(i){const m=convFind(String(i.name));if(!m)return false;if(m.a
   return true}
 function cvSuggest(q){const ci=cvChain(q||'');if(!ci||!ci.length||!CONV.length)return null;const qn=cvNorm(q);
   return CONV.filter(r=>ci.includes(r[0])&&(!qn||cvNorm(r[1]).includes(qn))).slice(0,40).map(r=>CONVCH[r[0]]+' '+r[1])}
-const itU=it=>it&&it.ug>0?['個',it.ug]:unitOf(it.name);
+const itU=it=>it&&it.gu?null:it&&it.ug>0?['個',it.ug]:unitOf(it.name); /* gu：gで見せる（丼・カレーのごはんなど） */
 function findFood(name){
   if(!name) return null; name=String(name).trim();
   if(FMAP[name]) return FMAP[name];
   if(MMAP[name]) return MMAP[name];
   if(STORE_RE.test(name)) return null;
-  return FOODS.find(f=>name.includes(f.n.replace(/（.*）/,''))||(f.a||[]).some(a=>name.includes(a)))||null;
+  /* 寿司（握り・軍艦）は「いか」「えび」が他の名前（すいか・えび天ぷら）に引っかからないよう、名前そのものか別の言い方でだけ当てる */
+  return FOODS.find(f=>(f.id!=='sushi'&&name.includes(f.n.replace(/（.*）/,'')))||(f.a||[]).some(a=>name.includes(a)))||null;
 }
 
 /* ===== タイプ ===== */
@@ -1301,11 +1388,11 @@ function textPrompt(q){
 これを食品ごとに分けて、量をグラムで推定してください。
 ・コンビニ（セブン-イレブン・ファミリーマート・ローソンなど）、スーパー（イオン・まいばすけっと・ロピア・イトーヨーカドー・西友・ライフなど）のお惣菜や商品、チェーン店・メーカーの商品は、材料に分けずに商品1つとして扱ってください。name は「店名＋商品名」（例：セブン-イレブン ざるそば、スーパー からあげ）、prod は true、g は1個（1パック）の内容量のグラム数、n は個数、per にはその商品の公式サイト・パッケージの栄養成分表示の値を100gあたりに直して入れてください。大盛り・普通盛りなどサイズが分かればそのサイズの値にします。量や玉の数を人に聞かず、ふつうに売られている1個で決めてください。同じ商品で大盛りなど量のちがう種類が売られているときだけ、sizes に種類ごとの内容量を {"普通":g,"大盛り":g} のように入れ、sz に選んだ種類を入れてください（種類が無ければ sizes は null）。
 ・量や個数（大盛り・2杯・半分など）が書いてあれば、それに合わせてください。個数が書いてある・数えられる食べ物は n に個数を入れてください（例：ゆで卵2個→n:2）。
-・食品は次のリストに近いものはその名前をそのまま使ってください：${names}
+・食品は次のリストに同じ食材があればその名前をそのまま使ってください（似ているだけの別の食材の名前にしない。例：えのきをしめじに、ぶりをはまちにしない。リストに無ければその食材のふつうの名前のまま）：${names}
 ・飲みものは g に ml の数を入れ、次のリストに近ければその名前を使ってください：${DRK.map(d=>d.n).join('、')}。リストに無いお酒は abv にアルコール度数（%）を入れてください。
 ・リストに無いものは per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください。
 ・title には短い料理名（例：牛丼並・みそ汁）。
-まず、これが何の食事かを kind に入れてください：home（家で作った料理）／yakiniku（焼肉）／yakitori（焼き鳥）／nabe（鍋・しゃぶしゃぶ）／eatout（そのほかの外食・定食・ラーメンなど）／product（コンビニ・スーパーの商品やお惣菜）。焼肉は肉を部位ごとに分け（牛タン・ハラミ・カルビ・ロース・ホルモンなど。次のリストの部位名を使う）、n に人前の数を入れてください（書いていなければ1人前）。焼き鳥は串の種類ごとに分け（もも・ねぎま・つくね・皮・レバー・砂肝など）、n に本数を入れてください。鍋は具（肉・魚・豆腐・野菜・きのこ・しらたき・しめのごはんや麺）を1人分に分けてください。焼肉・焼き鳥のたれや塩、鍋のポン酢・ごまだれ、料理に使った油・塩・こしょうは items に入れないでください（あとで本人に確認します）。焼肉・焼き鳥がたれか塩か、鍋のつけだれがポン酢かごまだれか分かれば sauce に tare／shio／ponzu／goma で入れてください（分からなければ空）。家で作った料理なら、使っていそうな油の量を oil に大さじの数で入れてください（例：0.5、1。揚げ物や炒め物は多め、油を使わない料理は0）。次のJSONだけを返してください：{"title":"","kind":"","sauce":"","oil":0,"items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0}]}`;
+まず、これが何の食事かを kind に入れてください：home（家で作った料理）／yakiniku（焼肉）／yakitori（焼き鳥）／nabe（鍋）／sushi（寿司）／ramen（ラーメン・つけ麺）／udon（うどん・そば）／don（丼）／curry（カレー）／teishoku（定食）／chuka（中華）／pasta（パスタ）／kona（お好み焼き・たこ焼き）／izakaya（居酒屋）／fastfood（ファストフード）／eatout（そのほかの外食）／product（コンビニ・スーパーの商品やお惣菜）。dish には種類を次から1つ入れてください：ラーメン＝醤油・塩・味噌・豚骨・家系・二郎系・担々麺・魚介豚骨・鶏白湯・タンメン・ちゃんぽん・つけ麺・冷やし中華・油そば／うどん・そば＝かけ・きつね・たぬき・天ぷら・月見・肉・カレー・わかめ・ざる・もり・ぶっかけ・釜玉・鍋焼き／鍋＝寄せ鍋・水炊き・もつ鍋・キムチ鍋・しゃぶしゃぶ・すき焼き・ちゃんこ鍋・豆乳鍋・湯豆腐・おでん・石狩鍋・カレー鍋・トマト鍋・ちり鍋・鶏白湯鍋／丼＝牛丼・豚丼・親子丼・カツ丼・天丼・海鮮丼・ねぎとろ丼・うな丼・中華丼・麻婆丼／カレー＝ビーフ・ポーク・チキン・キーマ・カツカレー・スープカレー・グリーンカレー・バターチキン／パスタ＝ミートソース・カルボナーラ・ペペロンチーノ・ナポリタン・たらこ・ボンゴレ・ジェノベーゼ・トマトクリーム・和風きのこ。ラーメン・うどん・そば・パスタは、めんとスープ（つゆ）を items に入れず、トッピングや具だけを入れてください（めんとスープはあとで種類と量を確認します）。うどんかそばかは men に udon／soba で入れてください。丼・カレー・定食のごはんは items に「ごはん」で入れて g に量を入れてください。牛丼・親子丼の上は「牛丼の具」「親子丼の具」の名前で入れてください。焼肉は肉を部位ごとに分け（牛タン・ハラミ・カルビ・ロース・ホルモンなど。次のリストの部位名を使う）、n に人前の数を入れてください（書いていなければ1人前）。焼き鳥は串の種類ごとに分け（もも・ねぎま・つくね・皮・レバー・砂肝など）、n に本数を入れてください。鍋は具（肉・魚・豆腐・野菜・きのこ・しらたき・しめのごはんや麺）を1人分に分けてください。寿司は1貫ずつネタごとに分けてリストの「（握り）」「（軍艦）」の名前を使い、n に貫数（回転寿司の1皿は2貫）。巻物は n に本数。しょうゆは items に入れないでください。焼肉・焼き鳥のたれや塩、鍋のポン酢・ごまだれ、料理に使った油・塩・こしょうは items に入れないでください（あとで本人に確認します）。焼肉・焼き鳥がたれか塩か、鍋のつけだれがポン酢かごまだれか分かれば sauce に tare／shio／ponzu／goma で入れてください（分からなければ空）。家で作った料理なら、使っていそうな油の量を oil に大さじの数で入れてください（例：0.5、1。揚げ物や炒め物は多め、油を使わない料理は0）。次のJSONだけを返してください：{"title":"","kind":"","dish":"","men":"","sauce":"","oil":0,"items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0}]}`;
 }
 async function readText(){
   const q=$('#textLog').value.trim(), st=$('#textSt'); if(!q){st.textContent='食べたものを書いてください。';return}
@@ -1316,7 +1403,14 @@ async function readText(){
     setTimeout(()=>$('#result').scrollIntoView({behavior:'smooth',block:'start'}),50);
   }catch(e){st.textContent=aiMsg(e)+'。'}finally{$('#textBtn').disabled=false}
 }
-function takeResult(res){
+let swapIdx=null;
+/* 読み取った食べ物を、別のものに変える。数（貫・本・個）はそのまま、重さは新しい食べ物に合わせる */
+function swapTo(i,name){const it=pending&&pending.items[i],f=findFood(String(name||'').trim());if(!it)return;if(!f){toast('リストに無い名前です。候補から選んでください');return}
+  const oU=itU(it),nU=unitOf(f.n),cnt=oU?it.g/oU[1]:null,old=it.name;
+  ['per','pf','off','ug','nw','sizes','sz','szPer','szK','cands','abv'].forEach(k=>delete it[k]);it.name=f.n;if(cnt!=null&&nU)it.g=Math.round(cnt*nU[1]*10)/10;
+  const b=(pending.base||[]).find(y=>y.name===old);if(b){['per','pf','off','ug','nw','sizes','sz','szPer','szK','cands','abv'].forEach(k=>delete b[k]);b.name=it.name;b.g=it.g}
+  swapIdx=null;applyEx();renderResult()}
+function takeResult(res){swapIdx=null;
   pending=JSON.parse(JSON.stringify(res));
   if(mode==='meal'){pending.base=JSON.parse(JSON.stringify(pending.items));
     const inStock=pending.items.some(i=>stockOf(i.name));
@@ -2004,7 +2098,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610042203';
+const APPVER='202610042224';
 /* アプリを開き直したとき、新しい版が出ていれば読みこみ直す（古い画面が残らないように） */
 async function checkNewVer(){if(APPVER==='dev'||!/^https?:/.test(location.protocol))return;try{const t=await (await fetch('./?nv='+Date.now(),{cache:'no-store'})).text();const m=t.match(/const APPVER='(\d+)'/);if(m&&m[1]!==APPVER){if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.update().catch(()=>{})))}location.reload()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVer()});setTimeout(checkNewVer,1500);
@@ -2237,9 +2331,9 @@ async function ai(prompt,opts){if(!SAMPLE) throw {code:APP?'no_key':'unavailable
 function prompts(){
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、'); const T=targets();
   return {
-   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真を見て、まず何の料理か（焼肉・焼き鳥・鍋・定食・ラーメン・家庭料理など）と、どこで食べたものかを判断してください。次に、皿・茶わん・箸・手などの大きさと比べて量を見積もり、写っている食べ物を材料ごとに分け（ただし、コンビニやスーパーのお惣菜・メーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める。大盛りなど量のちがう種類が売られている商品だけ sizes に {"普通":g,"大盛り":g}、sz に写真から見た種類を入れる）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに近いものは、その名前をそのまま使ってください：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。まず、これが何の食事かを kind に入れてください：home（家で作った料理）／yakiniku（焼肉）／yakitori（焼き鳥）／nabe（鍋・しゃぶしゃぶ）／eatout（そのほかの外食・定食・ラーメンなど）／product（コンビニ・スーパーの商品やお惣菜）。焼肉は肉を部位ごとに分け（牛タン・ハラミ・カルビ・ロース・ホルモンなど。次のリストの部位名を使う）、n に人前の数を入れてください（書いていなければ1人前）。焼き鳥は串の種類ごとに分け（もも・ねぎま・つくね・皮・レバー・砂肝など）、n に本数を入れてください。鍋は具（肉・魚・豆腐・野菜・きのこ・しらたき・しめのごはんや麺）を1人分に分けてください。焼肉・焼き鳥のたれや塩、鍋のポン酢・ごまだれ、料理に使った油・塩・こしょうは items に入れないでください（あとで本人に確認します）。焼肉・焼き鳥がたれか塩か、鍋のつけだれがポン酢かごまだれか分かれば sauce に tare／shio／ponzu／goma で入れてください（分からなければ空）。家で作った料理なら、使っていそうな油の量を oil に大さじの数で入れてください（例：0.5、1。揚げ物や炒め物は多め、油を使わない料理は0）。次のJSONだけを返してください：{"title":"料理名","kind":"","sauce":"","oil":0,"items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0}]}`,
+   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真を見て、まず何の料理か（焼肉・焼き鳥・鍋・寿司・ラーメン・うどん・丼・カレー・定食・中華・パスタ・家庭料理など）と、どこで食べたものかを判断してください。見分けにくいものは見た目の特徴で区別してください。きのこ：えのき＝白く細長い軸が束になり小さなかさ／しめじ＝茶色か白の丸いかさが株にまとまる／しいたけ＝大きく平たい茶色のかさ、裏にひだ／まいたけ＝灰色〜茶色のひらひらが重なる／エリンギ＝太く白い軸に小さなかさ／マッシュルーム＝白か茶の丸いかさ。寿司ネタ：まぐろ赤身＝濃い赤／中トロ・大トロ＝ピンクで白い脂のすじ／サーモン＝オレンジに白いすじ／はまち・ぶり＝白っぽいピンクで血合いが赤黒い／鯛・ひらめ＝白く半透明／いか＝白く不透明／たこ＝赤紫のふち／えび＝赤と白のしま／甘えび＝半透明のオレンジ／ほたて＝白く丸い／穴子・うなぎ＝茶色でたれ／いくら＝オレンジの粒／うに＝黄色〜オレンジ。次に、皿・茶わん・箸・手などの大きさと比べて量を見積もり、写っている食べ物を材料ごとに分け（ただし、コンビニやスーパーのお惣菜・メーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める。大盛りなど量のちがう種類が売られている商品だけ sizes に {"普通":g,"大盛り":g}、sz に写真から見た種類を入れる）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに同じ食材があれば、その名前をそのまま使ってください（似ているだけの別の食材の名前にしない。例：えのきをしめじに、ぶりをはまちにしない。リストに無ければその食材のふつうの名前のまま）：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。まず、これが何の食事かを kind に入れてください：home（家で作った料理）／yakiniku（焼肉）／yakitori（焼き鳥）／nabe（鍋）／sushi（寿司）／ramen（ラーメン・つけ麺）／udon（うどん・そば）／don（丼）／curry（カレー）／teishoku（定食）／chuka（中華）／pasta（パスタ）／kona（お好み焼き・たこ焼き）／izakaya（居酒屋）／fastfood（ファストフード）／eatout（そのほかの外食）／product（コンビニ・スーパーの商品やお惣菜）。dish には種類を次から1つ入れてください：ラーメン＝醤油・塩・味噌・豚骨・家系・二郎系・担々麺・魚介豚骨・鶏白湯・タンメン・ちゃんぽん・つけ麺・冷やし中華・油そば／うどん・そば＝かけ・きつね・たぬき・天ぷら・月見・肉・カレー・わかめ・ざる・もり・ぶっかけ・釜玉・鍋焼き／鍋＝寄せ鍋・水炊き・もつ鍋・キムチ鍋・しゃぶしゃぶ・すき焼き・ちゃんこ鍋・豆乳鍋・湯豆腐・おでん・石狩鍋・カレー鍋・トマト鍋・ちり鍋・鶏白湯鍋／丼＝牛丼・豚丼・親子丼・カツ丼・天丼・海鮮丼・ねぎとろ丼・うな丼・中華丼・麻婆丼／カレー＝ビーフ・ポーク・チキン・キーマ・カツカレー・スープカレー・グリーンカレー・バターチキン／パスタ＝ミートソース・カルボナーラ・ペペロンチーノ・ナポリタン・たらこ・ボンゴレ・ジェノベーゼ・トマトクリーム・和風きのこ。ラーメン・うどん・そば・パスタは、めんとスープ（つゆ）を items に入れず、トッピングや具だけを入れてください（めんとスープはあとで種類と量を確認します）。うどんかそばかは men に udon／soba で入れてください。丼・カレー・定食のごはんは items に「ごはん」で入れて g に量を入れてください。牛丼・親子丼の上は「牛丼の具」「親子丼の具」の名前で入れてください。焼肉は肉を部位ごとに分け（牛タン・ハラミ・カルビ・ロース・ホルモンなど。次のリストの部位名を使う）、n に人前の数を入れてください（書いていなければ1人前）。焼き鳥は串の種類ごとに分け（もも・ねぎま・つくね・皮・レバー・砂肝など）、n に本数を入れてください。鍋は具（肉・魚・豆腐・野菜・きのこ・しらたき・しめのごはんや麺）を1人分に分けてください。寿司は1貫ずつネタごとに分けてリストの「（握り）」「（軍艦）」の名前を使い、n に貫数（回転寿司の1皿は2貫）。巻物は n に本数。しょうゆは items に入れないでください。焼肉・焼き鳥のたれや塩、鍋のポン酢・ごまだれ、料理に使った油・塩・こしょうは items に入れないでください（あとで本人に確認します）。焼肉・焼き鳥がたれか塩か、鍋のつけだれがポン酢かごまだれか分かれば sauce に tare／shio／ponzu／goma で入れてください（分からなければ空）。家で作った料理なら、使っていそうな油の量を oil に大さじの数で入れてください（例：0.5、1。揚げ物や炒め物は多め、油を使わない料理は0）。次のJSONだけを返してください：{"title":"料理名","kind":"","dish":"","men":"","sauce":"","oil":0,"items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0}]}`,
    menu:`外食のメニューの写真です。ダイエット中の人（1食の目安 ${T?Math.round(T.kcal/3):650}kcal、たんぱく質を多めにとりたい）向けに、${styleNote()?'次の条件も守ってください。'+styleNote().replace(/\n/g,'／')+'。':''}メニューから最大5品を選び、1人前の推定カロリー・たんぱく質g・脂質g・炭水化物g・食物繊維g・食塩相当量g・判定（おすすめ／ふつう／控えめに のどれか）・短い理由を付けてください。次のJSONだけを返してください：{"options":[{"name":"","kcal":0,"p":0,"f":0,"c":0,"fi":0,"s":0,"verdict":"","reason":""}]}`,
-   receipt:`買い物のレシートの写真です。食材だけを抜き出し、次のリストに近い名前はその名前を使い、量をグラムで推定してください：${names}。コンビニやスーパーのお惣菜・お弁当・麺・おにぎり・サラダなどの商品は、リストの名前にせず name に「店名＋商品名」（店名が分からないお惣菜は「スーパー＋料理名」）、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値（{"k":0,"p":0,"f":0,"c":0,"fi":0,"s":0}）を入れてください。次のJSONだけを返してください：{"items":[{"name":"","g":0,"n":0,"prod":false,"per":null}]}`
+   receipt:`買い物のレシートの写真です。食材だけを抜き出し、次のリストに同じ食材があればその名前を使い（似ているだけの別の食材の名前にしない。例：えのきをしめじに、ぶりをはまちにしない。リストに無ければその食材のふつうの名前のまま）、量をグラムで推定してください：${names}。コンビニやスーパーのお惣菜・お弁当・麺・おにぎり・サラダなどの商品は、リストの名前にせず name に「店名＋商品名」（店名が分からないお惣菜は「スーパー＋料理名」）、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値（{"k":0,"p":0,"f":0,"c":0,"fi":0,"s":0}）を入れてください。次のJSONだけを返してください：{"items":[{"name":"","g":0,"n":0,"prod":false,"per":null}]}`
   }[mode];
 }
 async function read(useDemo){
@@ -2273,26 +2367,60 @@ function stockOf(name){const f=findFood(name);return S.stock.find(x=>x.name===na
 /* 料理に使った油・塩こしょう（100gあたり）。大さじ1＝油12g */
 const OILS={'サラダ油':{k:921,f:100},'オリーブオイル':{k:894,f:100},'ごま油':{k:890,f:100},'米油':{k:921,f:100},'バター':{k:700,f:81,p:0.6,c:0.2,s:1.9},'ギー':{k:897,f:99.7},'ラード':{k:885,f:100},'ココナッツオイル':{k:889,f:100}};
 const OAMT=[['0.33','小さじ1'],['0.5','大さじ½'],['1','大さじ1'],['1.5','大さじ1½'],['2','大さじ2'],['3','大さじ3']], SALT={'なし':0,'少し':0.5,'ふつう':1,'多め':2};
-const KINDS=['home','yakiniku','yakitori','nabe','eatout','product'];
+const KINDS=['home','yakiniku','yakitori','nabe','sushi','ramen','udon','don','curry','teishoku','chuka','pasta','kona','izakaya','fastfood','eatout','product'];
 function exDefault(res){const kd=KINDS.includes(res&&res.kind)?res.kind:'',self=$('#cookSelf').checked||!!(pending.cook&&pending.cook.self);
   const kind=self&&!['yakiniku','yakitori','nabe'].includes(kd)?'home':kd||(res&&res.home?'home':'eatout'), home=kind==='home', P=S.oilPref||{}, sc=res&&res.sauce;
   const ai=+(res&&res.oil)||0, near=ai>0?OAMT.reduce((a,b)=>Math.abs(+b[0]-ai)<Math.abs(+a[0]-ai)?b:a)[0]:null;
   pending.ex={kind,oil:home?(ai===0&&kd==='home'?'なし':(P.t||'サラダ油')):'なし',amt:near||P.a||'1',salt:home?(S.saltPref||'ふつう'):'なし',
-    tare:sc==='shio'?'塩':sc==='tare'?'たれ':(kind==='yakiniku'?S.yakiPref:S.toriPref)||'たれ',dip:sc==='goma'?'ごまだれ':sc==='ponzu'?'ポン酢':S.nabePref||'ポン酢',dipAmt:'ふつう'}}
+    shoyu:S.shoyuPref||'少し',...dishDefault(kind,res),tare:sc==='shio'?'塩':sc==='tare'?'たれ':(kind==='yakiniku'?S.yakiPref:S.toriPref)||'たれ',dip:sc==='goma'?'ごまだれ':sc==='ponzu'?'ポン酢':S.nabePref||'ポン酢',dipAmt:'ふつう'};
+  const X=pending.ex;if(kind==='nabe'&&!['goma','ponzu'].includes(sc)&&!DISH.nabe.dip.includes(X.dish))X.dip='なし'; /* つけだれは水炊き・しゃぶしゃぶなどだけ */}
+/* 料理の種類の最初の値。ごはんの量は、AIが見た量にいちばん近いもの */
+function dishDefault(kind,res){const D=DISH[kind];if(!D)return {};const d=String(res&&res.dish||'').replace(/ラーメン$/,'');const t=D.t.find(x=>x===d)||D.t.find(x=>d&&(x.includes(d)||d.includes(x)))||D.t[0];
+  const rg=((res&&res.items)||[]).filter(i=>/^ごはん|ライス/.test(String(i.name))).reduce((a,i)=>a+(+i.g||0),0);
+  const rice=D.rice?(rg?D.rice.reduce((a,b)=>Math.abs(b[1]-rg)<Math.abs(a[1]-rg)?b:a):D.rice[1]||D.rice[0])[0]:'';
+  const men=res&&res.men==='soba'||((res&&res.items)||[]).some(i=>/そば|蕎麦/.test(String(i.name)))?'そば':'うどん';
+  return {dish:t,drink:'半分',size:'普通',rice,men,kona:'ソースとマヨ',adds:[],dip:D.dip?(D.dip.includes(t)?'ポン酢':'なし'):undefined}}
 /* 焼肉は1人前ごとに、たれ15g・塩0.6g。焼き鳥は1本ごとに、たれ5g・塩0.3g。鍋のつけだれは1人分30g */
 const exPer=n=>{const f=findFood(n)||MMAP[n];return f?{k:f.k,p:f.p,f:f.f,c:f.c,fi:f.fi,s:f.s}:{k:0,p:0,f:0,c:0,fi:0,s:0}};
 function exCount(unit){return (pending.items||[]).filter(i=>!i.ex).reduce((a,i)=>{const u=itU(i);return a+(u&&u[0]===unit?i.g/u[1]:0)},0)}
-function applyEx(){if(!pending||!pending.ex)return;const x=pending.ex;pending.items=(pending.items||[]).filter(i=>!i.ex);
+const DRINK={'全部':1,'半分':0.5,'少し':0.25,'飲まない':0.1}, SIZE={'普通':1,'大盛り':1.5,'替え玉':2,'特盛':2};
+function applyTpl(x){const D=DISH[x.kind];if(!D)return;const it=pending.items,addT=(n,g,lab)=>{const f=findFood(n);if(f&&g>0)it.push({name:f.n,g:Math.round(g),tpl:1,...(lab?{lab}:{})})};
+  if(D.noodle){pending.items=pending.items.filter(i=>!D.noodle.re.test(String(i.name)));const nn=x.kind==='udon'&&x.men==='そば'?'そば（ゆで）':D.noodle.n,base=x.kind==='udon'&&x.men==='そば'?170:(D.noodle.by&&D.noodle.by[x.dish])||D.noodle.g;
+    pending.items.push({name:nn,g:Math.round(base*(SIZE[x.size]||1)),tpl:1})}
+  if(D.rice&&x.rice){pending.items=pending.items.filter(i=>!(/^ごはん|ライス/.test(String(i.name))&&!i.add));const r=D.rice.find(r=>r[0]===x.rice);if(r)pending.items.push({name:'ごはん',g:r[1],tpl:1,gu:1})}
+  const L=pending.items,add=(n,g,o)=>{const f=findFood(n);if(f&&g>0)L.push({name:f.n,g:Math.round(g*10)/10,tpl:1,...(o||{})})};
+  if(D.soup){const sn=D.soup(x.dish),f=findFood(sn);if(f&&f.u)add(sn,f.u[1]*(D.q.includes('drink')?(DRINK[x.drink]||0.5):1))}
+  ((D.base&&(D.base[x.dish]||D.base['*']))||[]).forEach(([n,g])=>add(n,g));
+  (x.adds||[]).forEach(k=>{const a=(D.adds||[]).find(a=>a[0]===k);if(a)a[1].forEach(([n,g])=>add(n,g,{add:k}))});
+  if(x.kind==='kona'){if(/ソース/.test(x.kona))add('お好み焼きソース',18);if(/マヨ/.test(x.kona))add('マヨネーズ',10);if(x.kona==='しょうゆ')add('しょうゆ',6)}}
+function applyEx(){if(!pending||!pending.ex)return;const x=pending.ex;pending.items=(pending.items||[]).filter(i=>!i.ex&&!i.tpl);applyTpl(x);
   const add=(name,key,g)=>{if(g>0)pending.items.push({name,g:Math.round(g*10)/10,pf:1,ex:1,per:exPer(key)})};
   if(x.kind==='yakiniku'||x.kind==='yakitori'){const yk=x.kind==='yakiniku',n=exCount(yk?'人前':'本')||(yk?1:3),key=yk?'＜調味料類＞ （調味ソース類） 焼き肉のたれ':'＜調味料類＞ （調味ソース類） 焼き鳥のたれ',tg=yk?15:5,sg=yk?0.6:0.3,h=x.tare==='半々'?0.5:1;
     if(x.tare==='たれ'||x.tare==='半々')add(yk?'焼肉のたれ':'焼き鳥のたれ',key,tg*n*h);if(x.tare==='塩'||x.tare==='半々')add('塩','＜調味料類＞ （食塩類） 食塩',sg*n*h);return}
-  if(x.kind==='nabe'){const m={'少し':0.5,'ふつう':1,'たっぷり':1.6}[x.dipAmt]||1;if(x.dip==='ポン酢')add('ポン酢','＜調味料類＞ （調味ソース類） ぽん酢しょうゆ 市販品',30*m);if(x.dip==='ごまだれ')add('ごまだれ','＜調味料類＞ （調味ソース類） ごまだれ',30*m);return}
+  if(x.kind==='sushi'){const n=exCount('貫')+exCount('本')*6,g={'つけない':0,'少し':1,'ふつう':2,'多め':3}[x.shoyu]||0;add('しょうゆ','＜調味料類＞ （しょうゆ類） こいくちしょうゆ',g*n);return}
+  if(x.kind==='nabe'){const m={'少し':0.5,'ふつう':1,'たっぷり':1.6}[x.dipAmt]||1;if(!x.dip)return;if(x.dip==='ポン酢')add('ポン酢','＜調味料類＞ （調味ソース類） ぽん酢しょうゆ 市販品',30*m);if(x.dip==='ごまだれ')add('ごまだれ','＜調味料類＞ （調味ソース類） ごまだれ',30*m);return}
   if(x.kind!=='home')return;
   if(x.oil!=='なし'&&OILS[x.oil])pending.items.push({name:x.oil+'（料理に使った油）',g:Math.round(+x.amt*12*10)/10,pf:1,ex:1,per:{k:0,p:0,f:0,c:0,fi:0,s:0,...OILS[x.oil]}});
   if(SALT[x.salt])pending.items.push({name:'塩こしょう',g:SALT[x.salt],pf:1,ex:1,per:{k:0,p:0,f:0,c:0,fi:0,s:99}})}
 function exHTML(){const x=pending.ex;if(!x)return '';const ch=(k,v,l)=>`<button type="button" class="chip" data-ox="${k}|${v}" aria-pressed="${x[k]===v}">${l||v}</button>`;
-  const other=`<div class="small muted">ちがう料理なら：${[['yakiniku','焼肉'],['yakitori','焼き鳥'],['nabe','鍋'],['home','自分で作った'],['eatout','外食・お店']].filter(([k])=>k!==x.kind).map(([k,l])=>ch('kind',k,l)).join(' ')}</div>`;
+  const other=`<details class="small muted"><summary>ちがう料理なら</summary><div class="chips" style="margin-top:6px">${[['home','自分で作った'],...Object.entries(DISH).map(([k,v])=>[k,v.l]),['eatout','そのほかの外食']].filter(([k])=>k!==x.kind).map(([k,l])=>ch('kind',k,l)).join('')}</div></details>`;
+  const D=DISH[x.kind];
+  if(D){
+    const row=(t,html)=>`<b class="small">${t}</b><div class="chips">${html}</div>`;let h='';
+    if(D.t.length>1)h+=row(`${D.l}の種類は？`,D.t.map(t=>ch('dish',t)).join(''));
+    if(D.q.includes('men'))h+=row('うどん？そば？',['うどん','そば'].map(o=>ch('men',o)).join(''));
+    if(D.q.includes('size'))h+=row('めんの量は？',(x.kind==='pasta'?['普通','大盛り']:['普通','大盛り','替え玉','特盛']).map(o=>ch('size',o)).join(''));
+    if(D.q.includes('drink')&&D.soup){const sn=D.soup(x.dish);h+=row(/たれ|だししょうゆ/.test(sn)?'たれは？':/つけ/.test(sn)?'つけ汁・つゆはどのくらい飲んだ？':x.kind==='nabe'?'スープ（だし）は飲んだ？':'スープはどのくらい飲んだ？',Object.keys(DRINK).map(o=>ch('drink',o)).join(''))}
+    if(D.q.includes('rice'))h+=row('ごはんの量は？',D.rice.map(([o,g])=>ch('rice',o,`${o}（${g}g）`)).join(''));
+    if(x.kind==='nabe'&&D.dip.includes(x.dish)||x.kind==='nabe'&&x.dip&&x.dip!=='なし')h+=row('つけだれは？',['ポン酢','ごまだれ','なし'].map(o=>ch('dip',o)).join(''))+(x.dip&&x.dip!=='なし'?row('どのくらい？',['少し','ふつう','たっぷり'].map(o=>ch('dipAmt',o)).join('')):'');
+    if(x.kind==='kona')h+=row('味つけは？',['ソースとマヨ','ソースだけ','しょうゆ','なし'].map(o=>ch('kona',o)).join(''));
+    if(x.kind==='yakiniku'||x.kind==='yakitori')h+=row(`${D.l}の味つけは？`,['たれ','塩','半々','なし'].map(o=>ch('tare',o)).join(''));
+    if(x.kind==='sushi')h+=row('しょうゆは？',['つけない','少し','ふつう','多め'].map(o=>ch('shoyu',o)).join(''));
+    if(D.adds&&D.adds.length)h+=row(x.kind==='nabe'?'しめ・追加は？（押すと足す・もう一度押すと消す）':'追加したものは？（押すと足す・もう一度押すと消す）',D.adds.map(a=>`<button type="button" class="chip" data-addx="${esc(a[0])}" aria-pressed="${(x.adds||[]).includes(a[0])}">${esc(a[0])}</button>`).join(''));
+    if(D.est)h+='';
+    return `<div class="qa stack" style="gap:6px">${h}<span class="small muted">中身がちがうときは、名前を押すと${D.l}の中から変えられます</span>${other}</div>`}
   if(x.kind==='yakiniku'||x.kind==='yakitori')return `<div class="qa stack" style="gap:6px"><b class="small">${x.kind==='yakiniku'?'焼肉':'焼き鳥'}の味つけは？</b><div class="chips">${['たれ','塩','半々','なし'].map(o=>ch('tare',o)).join('')}</div>${other}</div>`;
+  if(x.kind==='sushi')return `<div class="qa stack" style="gap:6px"><b class="small">しょうゆは？</b><div class="chips">${['つけない','少し','ふつう','多め'].map(o=>ch('shoyu',o)).join('')}</div><span class="small muted">ネタがちがうときは、名前を押すと変えられます</span>${other}</div>`;
   if(x.kind==='nabe')return `<div class="qa stack" style="gap:6px"><b class="small">つけだれは？</b><div class="chips">${['ポン酢','ごまだれ','なし'].map(o=>ch('dip',o,o==='なし'?'なし（スープに味がついてる）':o)).join('')}</div>${x.dip!=='なし'?`<b class="small">どのくらい？</b><div class="chips">${['少し','ふつう','たっぷり'].map(o=>ch('dipAmt',o)).join('')}</div>`:''}${other}</div>`;
   if(x.kind!=='home')return `<div class="small muted">${other.replace('ちがう料理なら：','味つけを足すなら：')}</div>`;
   return `<div class="qa stack" style="gap:6px"><b class="small">作るときに使った油は？（外食・コンビニなら「なし」のまま）</b><div class="chips">${['なし',...Object.keys(OILS)].map(o=>ch('oil',o,o)).join('')}</div>
@@ -2336,7 +2464,8 @@ function renderResult(){
   box.innerHTML=`<h3>${mode==='meal'?esc(pending.title||'読み取った食事'):'買ったもの'}</h3>${mode==='meal'&&pending.cook&&pending.cook.self&&pending.cook.all&&pending.cook.n>1?`<p class="small muted" style="margin:0">作った全部を${pending.cook.n}人分で割った、あなたの1人分です。</p>`:''}
   <div class="items">${items.map((it,i)=>{if(it.ex)return '';const f=it.pf?null:findFood(it.name);const unit=f&&f.u&&mode==='receipt'?`約${r1(it.g/f.u[1])}${f.u[0]}`:'';
    const U=itU(it);
-   return `<div class="item"><span class="nm">${esc(f?f.n:it.name)}${f?'':`<span class="small muted">${it.off?(it.name.startsWith(DELI)?'（食品成分表の標準値）':'（公式サイトの値）'):it.pf?'（AIが公式の表示から推定）':'（AI推定）'}</span>`}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>`}).join('')}</div>
+   const sw=swapIdx===i,gr=groupOf(f?f.n:it.name);
+   return `<div class="item"><button type="button" class="nm swapb" data-swap="${i}" aria-expanded="${sw}">${esc(f?f.n:it.name)}${f&&f.est?'<span class="small muted">（AIの目安）</span>':''}${f?'':`<span class="small muted">${it.off?(it.name.startsWith(DELI)?'（食品成分表の標準値）':'（公式サイトの値）'):it.pf?'（AIが公式の表示から推定）':'（AI推定）'}</span>`}</button><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>${sw?`<div class="qa stack" style="gap:6px"><b class="small">何に変える？</b>${gr?`<div class="chips">${gr.filter(n=>n!==(f?f.n:it.name)).map(n=>`<button type="button" class="chip" data-swapc="${i}|${esc(n)}">${esc(n)}</button>`).join('')}</div>`:''}<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="swapIn" class="inp" list="foodList" placeholder="食べ物の名前" style="flex:1;min-width:0"><button type="button" class="btn sm pri" data-swapgo="${i}">変える</button></div></div>`:''}`}).join('')}</div>
   ${items.map((it,i)=>it.cands&&!it.off?`<div class="qa stack" style="gap:6px"><b class="small">「${esc(it.name)}」はどれ？（公式の値に変えます）</b><div class="chips">${it.cands.map(([n,k],j)=>`<button type="button" class="chip" data-cand="${i}|${j}">${esc(n.replace(/^\S+\s/,''))}（${k}kcal）</button>`).join('')}</div></div>`:'').join('')}
   ${items.map((it,i)=>it.pf&&it.sizes?`<div class="qa stack" style="gap:6px"><b class="small">${esc(it.name)}のサイズはこれで合ってる？</b><div class="chips">${Object.entries(it.sizes).map(([k,g])=>`<button type="button" class="chip" data-sz="${i}|${esc(k)}" aria-pressed="${it.sz===k}">${esc(k)}（${it.szK&&it.szK[k]?it.szK[k]+'kcal':g+'g'}）</button>`).join('')}</div></div>`:'').join('')}
   ${mode==='meal'?exHTML():''}
@@ -2629,7 +2758,7 @@ function showRecs(){
 function bind(){
   $$('.tab').forEach(b=>b.addEventListener('click',()=>go(b.dataset.v)));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-ox],[data-cand],[data-cook],[data-rt]');if(!t)return;
+    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-ox],[data-cand],[data-swap],[data-swapc],[data-swapgo],[data-addx],[data-cook],[data-rt]');if(!t)return;
     if(t.dataset.plan){planShift++;renderHome()}
     if(t.dataset.pe){const T=targets(),d=S.ans.deep,k=['bf','lunch','dn'][+t.dataset.pe],x=planAll(T,d,dayNum()+planShift)[+t.dataset.pe];if(x&&x.it){const ml={bf:'朝',lunch:'昼',dn:'夜'}[k];if(x.it.cook)useFromStock(x.it.ing.map(([name,g])=>({name,g})));addLog(ml,x.it.n,x.it.ing.map(([name,g])=>({name,g})));toast(`${x.it.n}を記録しました`)}}
     if(t.dataset.go) go(t.dataset.go);
@@ -2647,9 +2776,14 @@ function bind(){
     if(t.dataset.use){const st=S.stock.find(x=>x.id===t.dataset.use);undoable(`${st?st.name:''}を1つ使って、記録しました`,()=>useStock(t.dataset.use,true))}
     if(t.dataset.stdel){const st=S.stock.find(x=>x.id===t.dataset.stdel);undoable(`${st?st.name:''}を消しました`,()=>{S.stock=S.stock.filter(x=>x.id!==t.dataset.stdel);save();renderStock()})}
     if(t.dataset.ox&&pending&&pending.ex){const [k,v]=t.dataset.ox.split('|');pending.ex[k]=v;
+      if(k==='kind'){Object.assign(pending.ex,dishDefault(v,{items:pending.items}))}
       if(k==='kind'&&v==='home'){const P=S.oilPref||{};pending.ex.oil=P.t||'サラダ油';pending.ex.salt=S.saltPref||'ふつう'}
-      if(k==='tare'&&v!=='なし'){if(pending.ex.kind==='yakiniku')S.yakiPref=v;else S.toriPref=v}if(k==='dip')S.nabePref=v;
+      if(k==='tare'&&v!=='なし'){if(pending.ex.kind==='yakiniku')S.yakiPref=v;else S.toriPref=v}if(k==='dip')S.nabePref=v;if(k==='shoyu')S.shoyuPref=v;
       if(k==='oil'&&v!=='なし')S.oilPref={...(S.oilPref||{}),t:v};if(k==='amt')S.oilPref={...(S.oilPref||{}),a:v};if(k==='salt'&&v!=='なし')S.saltPref=v;save();applyEx();renderResult()}
+    if(t.dataset.addx&&pending&&pending.ex){const a=pending.ex.adds||(pending.ex.adds=[]),k=t.dataset.addx,j=a.indexOf(k);if(j>=0)a.splice(j,1);else a.push(k);applyEx();renderResult();return}
+    if(t.dataset.swap!=null&&pending){const i=+t.dataset.swap;swapIdx=swapIdx===i?null:i;renderResult();const e=$('#swapIn');if(e&&!groupOf(pending.items[i].name))e.focus();return}
+    if(t.dataset.swapc){const k=t.dataset.swapc.indexOf('|');swapTo(+t.dataset.swapc.slice(0,k),t.dataset.swapc.slice(k+1));return}
+    if(t.dataset.swapgo!=null){swapTo(+t.dataset.swapgo,($('#swapIn')||{}).value);return}
     if(t.dataset.cand&&pending){const [i,j]=t.dataset.cand.split('|').map(Number),it=pending.items[i];if(it&&it.cands&&it.cands[j]){
       const c=it.ug>0?Math.max(1,Math.round(it.g/it.ug)):1,x={name:it.cands[j][0],g:it.ug||it.g,prod:true},old=it.name;if(convApply(x)){
         ['sizes','sz','szPer','szK','nw','cands'].forEach(k=>delete it[k]);Object.assign(it,{name:x.name,per:x.per,ug:x.g,g:x.g*c,pf:1,off:1},x.nw?{nw:1}:{},x.sizes?{sizes:x.sizes,sz:x.sz,szPer:x.szPer,szK:x.szK}:{});
@@ -2838,5 +2972,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610042203').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610042224').catch(()=>{}));</script>
 </body></html>
