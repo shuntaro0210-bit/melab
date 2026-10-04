@@ -355,8 +355,9 @@ header.top .in{padding-block:12px}
     <h3>手で追加</h3>
     <div class="grid2">
       <div class="field"><label for="stName">食材</label><input id="stName" list="foodList" placeholder="例：鶏むね肉"></div>
-      <div class="field"><label for="stG">量（<span id="stU">g</span>）</label><input id="stG" type="number" inputmode="decimal" min="0.25" step="any" placeholder="例：2"></div>
+      <div class="field"><label for="stG">量</label><div class="row" style="gap:6px;flex-wrap:nowrap"><input id="stG" type="number" inputmode="decimal" min="0.25" step="any" placeholder="例：4" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px"><select id="stUnit" aria-label="単位" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 6px;max-width:9.5em"></select></div></div>
     </div>
+    <p class="small muted" id="stHint" style="margin:0">数と単位を選ぶだけ（4個・2パックなど）。グラムで入れたいときは「g」に。</p>
     <button class="btn" id="stAdd" type="button">在庫に追加</button>
   </div>
   <p class="small muted">「今日使う」を押すと、在庫から1つ分へって、今日の記録にも入ります。</p>
@@ -1938,7 +1939,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041531';
+const APPVER='202610041603';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2238,20 +2239,36 @@ function renderResult(){
 }
 
 /* ----- 在庫 ----- */
-function fmtAmt(name,g){return amt(name,g)}
+function fmtAmt(name,g,pu){if(pu&&pu.g>0){const x=g/pu.g;return `${x>=2?'約'+Math.round(x):frac(Math.max(x,0.25))}${pu.n}（${Math.round(g)}g）`}return amt(name,g)}
+/* 手で追加：数＋単位で入れる。単位の重さが分からない食材は、AIに「1個は何g？」と聞く */
+const PIECE=['個','パック','本','枚','袋','切れ','玉','束','缶'], GEN={'個':100,'パック':200,'本':100,'枚':80,'袋':150,'切れ':80,'玉':200,'束':150,'缶':150};
+function stUnits(){const f=findFood($('#stName').value.trim()),u=f&&unitOf(f.n),sel=$('#stUnit'),cur=sel.value;
+  const opts=u?(u[0]==='ml'?[['ml','ml'],['g','g']]:[[u[0],`${u[0]}（1${u[0]}≒${u[1]}g）`],['g','g']]):[...PIECE.map(p=>[p,p]),['g','g'],['ml','ml']];
+  sel.innerHTML=opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');if(!u&&opts.some(o=>o[0]===cur))sel.value=cur}
+async function stAddDo(){
+  const n=$('#stName').value.trim(),v=+$('#stG').value,un=$('#stUnit').value,btn=$('#stAdd');
+  if(!n||!v){toast('食材と数を入れてください');return}
+  const f=findFood(n),u=f&&unitOf(f.n);let per=null;
+  if(un==='g'||un==='ml') per=1; else if(u&&u[0]===un) per=u[1];
+  else{btn.disabled=true;btn.textContent='1'+un+'の重さを調べています…';
+    try{const r=await ai(`食材「${n}」の「1${un}」は、ふつう何グラムですか（日本のスーパーで売っている一般的な大きさ・中身の重さ）。次のJSONだけを返してください：{"g":数値}`);if(+r.g>0&&+r.g<5000){per=+r.g;toast(`1${un}＝約${Math.round(per)}gで入れました`)}}catch(e){}
+    finally{btn.disabled=false;btn.textContent='在庫に追加'}
+    if(!per){per=GEN[un]||100;toast(`1${un}＝約${per}gで入れました（AIにつながらなかったので目安）`)}}
+  addStock(n,v*per,un==='g'||un==='ml'||(u&&u[0]===un)?null:{n:un,g:per});save();renderStock();$('#stName').value='';$('#stG').value='';stUnits();
+}
 function renderStock(){
   const L=$('#stockList');
   if(!S.stock.length){L.innerHTML='<p class="small muted">まだ何もありません。レシートを撮るか、下から追加してください。</p>';return}
-  L.innerHTML=S.stock.map(s=>`<div class="st"><div style="min-width:0"><b>${esc(s.name)}</b><div class="small muted num">${fmtAmt(s.name,s.g)}</div></div>
+  L.innerHTML=S.stock.map(s=>`<div class="st"><div style="min-width:0"><b>${esc(s.name)}</b><div class="small muted num">${fmtAmt(s.name,s.g,s.pu)}</div></div>
    <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button><button class="btn sm" type="button" data-use="${s.id}">今日使う</button></div></div>`).join('');
 }
-function addStock(name,g){
+function addStock(name,g,pu){
   const f=findFood(name); const n=f?f.n:name;
-  const ex=S.stock.find(s=>s.name===n); if(ex) ex.g+= +g; else S.stock.push({id:uid(),name:n,g:+g,d:TODAY});
+  const ex=S.stock.find(s=>s.name===n); if(ex){ex.g+= +g;if(pu&&!ex.pu)ex.pu=pu} else S.stock.push({id:uid(),name:n,g:+g,d:TODAY,...(pu?{pu}:{})});
 }
 function useStock(id,log){
   const s=S.stock.find(x=>x.id===id); if(!s) return;
-  const f=findFood(s.name); const g=Math.min(s.g,f&&f.u?f.u[1]:100);
+  const f=findFood(s.name); const g=Math.min(s.g,s.pu?s.pu.g:f&&f.u?f.u[1]:100);
   s.g-=g; if(s.g<=0.5) S.stock=S.stock.filter(x=>x.id!==id);
   if(log){addLog(mealNow(),`${s.name}（在庫から）`,[{name:s.name,g}]);toast(`${s.name}を${Math.round(g)}g 記録しました`)}
   save();renderStock();
@@ -2487,7 +2504,11 @@ function bind(){
   $('#photoBox').addEventListener('change',e=>{if(e.target.id==='phIn'&&e.target.files[0])addBodyPhoto(e.target.files[0])});
   $('#photoBox').addEventListener('click',photoClick);
   $('#chatBtn').addEventListener('click',()=>askCoach($('#chatIn').value));
-  $('#invSave').addEventListener('click',()=>{const v=$('#invCode').value.trim();try{v?localStorage.setItem(INV,v):localStorage.removeItem(INV)}catch(e){}$('#invCode').value='';appAI();if(S.pushOn)pushSync().catch(()=>{});toast(v?'招待コードを保存しました':'招待コードを消しました')});
+  $('#invSave').addEventListener('click',async()=>{const v=$('#invCode').value.normalize('NFKC').toLowerCase().replace(/\s+/g,'').replace(/[ー‐‑–—―−ｰ_]/g,'-');try{v?localStorage.setItem(INV,v):localStorage.removeItem(INV)}catch(e){}appAI();if(!v){toast('招待コードを消しました');return}
+    /* その場でサーバーに確かめる */
+    try{const r=await fetch(API_BASE+'/push/unsubscribe',{method:'POST',headers:{'Content-Type':'application/json','X-Invite':v},body:'{}'});
+      if(r.status===403){$('#aiStatus').textContent='このコードは使えません。もらったコードをもう一度確かめてください。';toast('招待コードが違うようです');return}}catch(e){}
+    $('#invCode').value='';if(S.pushOn)pushSync().catch(()=>{});renderAsk();toast('招待コードOK。AIが使えます')});
   $('#pushOn').addEventListener('click',pushEnable);
   $('#statsOk').addEventListener('change',e=>{S.statsOk=e.target.checked;save();if(!S.statsOk)try{localStorage.removeItem(SQ)}catch(x){}});
   $('#fbBtn').addEventListener('click',fbOpen);$('#fbClose').addEventListener('click',()=>$('#fbDlg').close());
@@ -2526,13 +2547,14 @@ function bind(){
   $('#readBtn').addEventListener('click',()=>read(false));
   $('#demoBtn').addEventListener('click',()=>read(true));
   const uLab=(inp,lab)=>{const f=findFood($(inp).value.trim());const u=f&&unitOf(f.n);$(lab).textContent=u?u[0]:'g'};
-  $('#addName').addEventListener('input',()=>uLab('#addName','#addU'));$('#stName').addEventListener('input',()=>uLab('#stName','#stU'));
+  $('#addName').addEventListener('input',()=>uLab('#addName','#addU'));
   const toG=(n,v)=>{const f=findFood(n);const u=f&&unitOf(f.n);return u?v*u[1]:v};
   $('#addManual').addEventListener('click',()=>{const n=$('#addName').value.trim(),f=findFood(n),g=f?toG(f.n,+$('#addG').value):0;
     if(!f||!g){$('#snapStatus').textContent='リストにある食べ物と、量を入れてください。';return}
     addLog($('#mealSel').value||mealNow(),f.n,[{name:f.n,g}]);$('#addName').value='';$('#addG').value='';toast(`${f.n} ${amt(f.n,g)} を記録しました`);$('#addU').textContent='g'});
   $('#toReceipt').addEventListener('click',()=>{go('snap');setMode('receipt')});
-  $('#stAdd').addEventListener('click',()=>{const n=$('#stName').value.trim(),g=toG(n,+$('#stG').value);if(!n||!g){toast('食材と量を入れてください');return}addStock(n,g);save();renderStock();$('#stName').value='';$('#stG').value=''});
+  $('#stName').addEventListener('input',stUnits);stUnits();
+  $('#stAdd').addEventListener('click',stAddDo);
   $('#bAdd').addEventListener('click',()=>{const w=parseFloat($('#bW').value),f=parseFloat($('#bF').value),m=parseFloat($('#bM').value);
     if(isNaN(w)&&isNaN(f)&&isNaN(m)){toast('どれか1つは入れてください');return}
     S.body=S.body.filter(b=>b.d!==TODAY);S.body.push({d:TODAY,w:isNaN(w)?null:w,f:isNaN(f)?null:f,m:isNaN(m)?null:m});
@@ -2612,5 +2634,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041531').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041603').catch(()=>{}));</script>
 </body></html>
