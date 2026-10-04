@@ -361,8 +361,9 @@ header.top .btn{white-space:nowrap}@media (max-width:400px){header.top .date{dis
   <div class="card stack">
     <h3>手で追加</h3>
     <div class="field"><label for="stName">食材</label><input id="stName" list="foodList" placeholder="例：鶏むね肉"></div>
-    <div class="field"><label for="stG">量</label><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="stG" type="number" inputmode="decimal" min="0.25" step="any" placeholder="例：4" style="width:6.5em;flex:none;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;font-size:16px"><select id="stUnit" aria-label="単位" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 8px;font-size:16px"></select></div></div>
+    <div class="field"><label for="stG">量</label><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="stG" type="number" inputmode="decimal" min="0.25" max="99999" step="any" placeholder="例：4" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:9px 10px;font-size:20px;font-weight:700;text-align:center"><select id="stUnit" aria-label="単位" style="flex:1.3;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 8px;font-size:16px"></select></div></div>
     <p class="small muted" id="stHint" style="margin:0">数と単位を選ぶだけ（卵4個・しょうゆ1本など）。調味料は本（ml）や大さじでもOK。</p>
+    <p class="small" id="stPrev" style="margin:0;font-weight:700" hidden></p>
     <button class="btn" id="stAdd" type="button">在庫に追加</button>
   </div>
   <p class="small muted">「今日使う」を押すと、在庫から1つ分へって、今日の記録にも入ります。</p>
@@ -1938,7 +1939,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041633';
+const APPVER='202610041634';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2258,15 +2259,16 @@ function fmtAmt(name,g,pu){
 const PIECE=['個','パック','本','枚','袋','切れ','玉','束','缶'], GEN={'個':100,'パック':200,'本':100,'枚':80,'袋':150,'切れ':80,'玉':200,'束':150,'缶':150};
 const RICE_RE=/^(お?米|お?こめ|白米|精白米|無洗米)$/, RICE='お米（精白米）';
 function riceFood(){if(!FMAP[RICE]){const m=MMAP['こめ ［水稲穀粒］ 精白米 うるち米'];if(m)FMAP[RICE]={...m,n:RICE}}return FMAP[RICE]}
-function stUnits(){riceFood();if(RICE_RE.test($('#stName').value.trim())){riceFood();$('#stUnit').innerHTML=[['p5000','袋（5kg）'],['p10000','袋（10kg）'],['p2000','袋（2kg）'],['合','合（1合≒150g）'],['kg','kg'],['g','g']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');return}
+function stUnits(){riceFood();if(RICE_RE.test($('#stName').value.trim())){riceFood();$('#stUnit').innerHTML=[['p5000','袋（5kg）'],['p10000','袋（10kg）'],['p2000','袋（2kg）'],['合','合（1合≒150g）'],['kg','kg'],['g','g']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');stPrev();return}
   const f=findFood($('#stName').value.trim()),u=f&&unitOf(f.n),sel=$('#stUnit'),cur=sel.value,nm=f&&f.n;
   const opts=nm&&LIQS.includes(nm)?[['b500','本（500ml）'],['b1000','本（1L）'],['b300','本（300ml）'],['b150','本（150ml）'],['ml','ml'],['大さじ','大さじ'],['小さじ','小さじ']]
    :nm&&SPOON[nm]?[...(PACKS[nm]||[]).map(x=>['p'+x,`袋・本（${x>=1000?x/1000+'kg':x+'g'}）`]),['g','g'],['大さじ','大さじ'],['小さじ','小さじ']]
    :u?(u[0]==='ml'?[['ml','ml'],['g','g']]:[[u[0],`${u[0]}（1${u[0]}≒${u[1]}g）`],['g','g']]):[...PIECE.map(p=>[p,p]),['g','g'],['ml','ml']];
-  sel.innerHTML=opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');if(!u&&opts.some(o=>o[0]===cur))sel.value=cur}
+  sel.innerHTML=opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');if(!u&&opts.some(o=>o[0]===cur))sel.value=cur;stPrev()}
 async function stAddDo(){
   const n=$('#stName').value.trim(),v=+$('#stG').value,un=$('#stUnit').value,btn=$('#stAdd');
   if(!n||!v){toast('食材と数を入れてください');return}
+  if(!(v>0)||v>stMax(un)){toast(`数が大きすぎます（${stMax(un)}まで）。打ち直してください`);return}
   if(RICE_RE.test(n)){riceFood();const g=un[0]==='p'?v*+un.slice(1):un==='合'?v*150:un==='kg'?v*1000:v;undoable('お米を在庫に入れました',()=>{addStock(RICE,g,{n:'合',g:150});save();renderStock()});$('#stName').value='';$('#stG').value='';stUnits();return}
   const f=findFood(n),u=f&&unitOf(f.n),nm=f&&f.n;let per=null;
   if(nm&&SPOON[nm]){const d=SPOON[nm]/5, ml=un[0]==='b'?v*+un.slice(1):un==='ml'?v:un==='大さじ'?v*15:un==='小さじ'?v*5:null;
@@ -2279,11 +2281,15 @@ async function stAddDo(){
     if(!per){per=GEN[un]||100;toast(`1${un}＝約${per}gで入れました（AIにつながらなかったので目安）`)}}
   undoable(`${n}を在庫に入れました`,()=>{addStock(n,v*per,un==='g'||un==='ml'||(u&&u[0]===un)?null:{n:un,g:per});save();renderStock()});$('#stName').value='';$('#stG').value='';stUnits();
 }
+/* 数の上限：g・mlは99999、個・本などは999 */
+const stMax=un=>un==='g'||un==='ml'?99999:999;
+function stPrev(){const v=$('#stG').value,el=$('#stPrev'),un=$('#stUnit'),o=un.options[un.selectedIndex];if(!v){el.hidden=true;return}
+  const big=!(+v>0)||+v>stMax(un.value);el.hidden=false;el.style.color=big?'var(--bad)':'var(--ink)';el.textContent=big?`数が大きすぎます（${stMax(un.value)}まで）`:`入れる量：${+v} ${o?o.textContent.replace(/（.*$/,''):''}`}
 function renderStock(){
   const L=$('#stockList');
   if(!S.stock.length){L.innerHTML='<p class="small muted">まだ何もありません。レシートを撮るか、下から追加してください。</p>';return}
   L.innerHTML=S.stock.map(s=>`<div class="st"><div style="min-width:0"><b>${esc(s.name)}</b><div class="small muted num">${fmtAmt(s.name,s.g,s.pu)}</div></div>
-   <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button><button class="btn sm" type="button" data-use="${s.id}">今日使う</button></div></div>`).join('');
+   <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button><button class="btn sm" type="button" data-use="${s.id}">今日使う</button><button class="step" type="button" data-stdel="${s.id}" aria-label="${esc(s.name)}を消す" title="消す" style="color:var(--bad)">✕</button></div></div>`).join('')+`<div class="row" style="justify-content:flex-end;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sm" type="button" data-stclear="1" style="color:var(--bad)">冷蔵庫を全部空にする</button></div>`;
 }
 function addStock(name,g,pu){
   const f=findFood(name); const n=f?f.n:name;
@@ -2468,7 +2474,7 @@ function showRecs(){
 function bind(){
   $$('.tab').forEach(b=>b.addEventListener('click',()=>go(b.dataset.v)));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-cook],[data-rt]');if(!t)return;
+    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-cook],[data-rt]');if(!t)return;
     if(t.dataset.plan){planShift++;renderHome()}
     if(t.dataset.pe){const T=targets(),d=S.ans.deep,k=['bf','lunch','dn'][+t.dataset.pe],x=planAll(T,d,dayNum()+planShift)[+t.dataset.pe];if(x&&x.it){const ml={bf:'朝',lunch:'昼',dn:'夜'}[k];if(x.it.cook)useFromStock(x.it.ing.map(([name,g])=>({name,g})));addLog(ml,x.it.n,x.it.ing.map(([name,g])=>({name,g})));toast(`${x.it.n}を記録しました`)}}
     if(t.dataset.go) go(t.dataset.go);
@@ -2484,6 +2490,8 @@ function bind(){
     if(t.dataset.rm){pending.items.splice(+t.dataset.rm,1);renderResult()}
     if(t.dataset.eat){const o=pending.options[+t.dataset.eat];go('home');undoable(`${o.name}を記録しました`,()=>addLog(mealNow(),o.name,[{name:o.name,g:100,per:{k:o.kcal,p:o.p,f:o.f||0,c:o.c||0,fi:o.fi||0,s:o.s||0}}]))}
     if(t.dataset.use){const st=S.stock.find(x=>x.id===t.dataset.use);undoable(`${st?st.name:''}を1つ使って、記録しました`,()=>useStock(t.dataset.use,true))}
+    if(t.dataset.stdel){const st=S.stock.find(x=>x.id===t.dataset.stdel);undoable(`${st?st.name:''}を消しました`,()=>{S.stock=S.stock.filter(x=>x.id!==t.dataset.stdel);save();renderStock()})}
+    if(t.dataset.stclear){undoable('冷蔵庫を空にしました',()=>{S.stock=[];save();renderStock()})}
     if(t.dataset.dec){const st=S.stock.find(x=>x.id===t.dataset.dec);undoable(`${st?st.name:''}を1つへらしました`,()=>useStock(t.dataset.dec,false))}
     if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;undoable(`${r.n}を記録しました（在庫からも引きました）`,()=>{useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})))});renderRecipes()}
     if(t.dataset.rt){rTag=t.dataset.rt;renderRecipes()}
@@ -2575,6 +2583,7 @@ function bind(){
   $('#toReceipt').addEventListener('click',()=>{go('snap');setMode('receipt')});
   $('#stName').addEventListener('input',stUnits);stUnits();
   $('#stAdd').addEventListener('click',stAddDo);
+  $('#stG').addEventListener('input',()=>{const e=$('#stG');if(e.value.replace(/\D/g,'').length>6)e.value=e.value.slice(0,6);stPrev()});$('#stUnit').addEventListener('change',stPrev);
   $('#bAdd').addEventListener('click',()=>{const w=parseFloat($('#bW').value),f=parseFloat($('#bF').value),m=parseFloat($('#bM').value);
     if(isNaN(w)&&isNaN(f)&&isNaN(m)){toast('どれか1つは入れてください');return}
     if((!isNaN(w)&&(w<20||w>300))||(!isNaN(f)&&(f<2||f>75))||(!isNaN(m)&&(m<5||m>120))){toast('数字を確かめてください（体重は kg、体脂肪率は %）');return}
@@ -2656,5 +2665,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041633').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041634').catch(()=>{}));</script>
 </body></html>
