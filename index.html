@@ -226,6 +226,10 @@ header.top .in{padding-block:12px}
 .cups{display:flex;gap:2px;flex-wrap:wrap}.cup{width:34px;height:42px;border:0;background:none;padding:0;cursor:pointer;border-radius:8px}.cup svg{width:100%;height:100%;display:block}
 .date{white-space:nowrap}.bar .lab span{white-space:nowrap}.bar .lab{font-size:.8rem}
 .big2{font-family:var(--display);font-size:1.9rem;font-weight:700;line-height:1.1}
+/* 2026-10-04 基本だけにする：外した機能は画面に出さない */
+.simple #checkupCard,.simple #photoBox,.simple #shareCard,.simple #badgeCard,.simple #typeCard,.simple #weekWrap,.simple #tdeeCard,
+.simple #craveBtn,.simple #drinkBox,.simple #cookBox,.simple .seg,.simple #stockSet,.simple [data-ask="冷蔵庫の残りで今日の晩ごはんを考えて"],.simple .tab[data-v="stock"]{display:none!important}
+nav.tabs .in{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:1fr}
 </style>
 
 <header class="top"><div class="in">
@@ -278,7 +282,7 @@ header.top .in{padding-block:12px}
 
 <!-- 撮る -->
 <section id="v-snap" class="stack" hidden>
-  <h2>記録・相談</h2>
+  <h2>記録する</h2>
   <div class="seg" role="group" aria-label="何をするか">
     <button type="button" data-mode="meal" aria-pressed="true">食べたもの</button>
     <button type="button" data-mode="menu" aria-pressed="false">頼む前に相談</button>
@@ -516,7 +520,7 @@ header.top .in{padding-block:12px}
     <div class="row" id="famNrow"><label class="small" for="famN">家族の人数（自分も入れて）</label><select id="famN" class="inp"><option value="">登録しない</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
     <div class="row" style="gap:6px"><input id="famLabel" class="inp" placeholder="呼び名（例：長男）" style="flex:1;min-width:0"><input id="famAge" class="inp" type="number" inputmode="numeric" min="0" max="100" placeholder="年齢" style="width:4.5em"><select id="famSex" class="inp"><option value="m">男</option><option value="f">女</option></select><button class="btn sm" id="famAdd" type="button">追加</button></div>
   </div>
-  <div class="stack">
+  <div class="stack" id="stockSet">
     <h3>在庫（冷蔵庫）の管理</h3>
     <p class="small muted" style="margin:0">「答えに合わせる」だと、作ってもらう人・自炊しない人は自動で「使わない」になります。「使わない」にすると、食材タブ・レシート・在庫の確認が消えて、写真を撮るだけになります。</p>
     <div class="chips" id="stockPick"><button type="button" class="chip" data-sm="auto">答えに合わせる</button><button type="button" class="chip" data-sm="on">使う</button><button type="button" class="chip" data-sm="off">使わない</button></div>
@@ -1291,7 +1295,7 @@ function badgeCtx(){
     cond:Object.keys(S.cond||{}).length,chat:(S.chat||[]).filter(m=>m.r==='u').length,crave:(S.crave||[]).filter(x=>x.res==='win').length,ck:(S.checkups||[]).length};
 }
 function checkBadges(){
-  if(S.sample||!S.ans) return; S.badges=S.badges||{}; const c=badgeCtx(), got=[];
+  if(SIMPLE||S.sample||!S.ans) return; S.badges=S.badges||{}; const c=badgeCtx(), got=[];
   BADGES.forEach(([id,n,,f])=>{if(!S.badges[id]&&f(c)){S.badges[id]=TODAY;got.push(n)}});
   if(got.length){save();setTimeout(()=>toast(`バッジ獲得：${got.join('・')}`),900)}
 }
@@ -1365,7 +1369,7 @@ ${cd?`【体調】${cd}\n`:''}${(()=>{const L=ckSorted(),c=L[L.length-1];return 
 let chatBusy=false;
 function renderChat(){
   const L=S.chat||[], el=$('#chatLog'); if(!el) return;
-  el.innerHTML=L.length?L.map(m=>`<div class="msg ${m.r==='u'?'me':'co'}">${m.r==='u'?'':`<span class="face sm">${coachSVG(S.coach||'f',m.t==='…'?'think':'')}</span>`}<p>${esc(m.t)}</p></div>`).join(''):`<p class="small muted" style="margin:0">あなたの記録・目安・冷蔵庫・体調を全部わかった上で答えます。下の例をタップしても聞けます。</p>`;
+  el.innerHTML=L.length?L.map(m=>`<div class="msg ${m.r==='u'?'me':'co'}">${m.r==='u'?'':`<span class="face sm">${coachSVG(S.coach||'f',m.t==='…'?'think':'')}</span>`}<p>${esc(m.t)}</p></div>`).join(''):`<p class="small muted" style="margin:0">あなたの記録・目安・体調を全部わかった上で答えます。下の例をタップしても聞けます。</p>`;
   el.scrollTop=el.scrollHeight;
 }
 async function askCoach(q){
@@ -1933,7 +1937,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610041616';
+const APPVER='202610041618';
 const canFb=()=>APP&&!!API_BASE&&!!inviteCode();
 const SQ='melab-stats';
 function track(ev){if(!canFb()||S.statsOk!==true)return;try{const q=JSON.parse(localStorage.getItem(SQ)||'{}');q[TODAY]=q[TODAY]||{};q[TODAY][ev]=(q[TODAY][ev]||0)+1;localStorage.setItem(SQ,JSON.stringify(q))}catch(e){}}
@@ -2103,7 +2107,7 @@ async function nextPhoto(){
 
 /* ----- 撮る ----- */
 let mode='meal', photo=null, pending=null;
-const HELP={meal:'外食・コンビニ・自炊、どれでも食べる前に撮るだけ。AIが中身と量を読んで、カロリーと栄養を出します。自分で作った料理は、下の「自分で作った料理」にチェックを。',menu:'お店のメニューを撮ると、あなたに合う頼み方を出します。何を食べるか迷ったら、ホームの「今日の食べ方」も見てください。',receipt:'買い物のレシートを撮ると、買った食材が在庫に入ります。何を買うか迷ったら「食材」タブの買い物リストへ。'};
+const HELP={meal:'外食・コンビニ・自炊、どれでも食べる前に撮るだけ。AIが中身と量を読んで、カロリーと栄養を出します。',menu:'お店のメニューを撮ると、あなたに合う頼み方を出します。何を食べるか迷ったら、ホームの「今日の食べ方」も見てください。',receipt:'買い物のレシートを撮ると、買った食材が在庫に入ります。何を買うか迷ったら「食材」タブの買い物リストへ。'};
 function setMode(m){
   mode=m;$$('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===m));
   $('#modeHelp').textContent=HELP[m];$('#mealPick').hidden=m!=='meal';$('#cookBox').hidden=m!=='meal'||!stockOn();$('#myBox').hidden=m!=='meal';$('#drinkBox').hidden=m!=='meal';$('#textBox').hidden=m!=='meal';
@@ -2180,7 +2184,9 @@ async function read(useDemo){
   takeResult(res);
 }
 /* 在庫の管理を使うか：実家暮らし（作ってもらう人）や料理しない人は使わない。設定で変えられる */
+const SIMPLE=true; document.documentElement.classList.toggle('simple',SIMPLE);
 function stockOn(){
+  if(SIMPLE) return false;
   if(S.stockMode===true||S.stockMode===false) return S.stockMode;
   if(!S.ans) return true; const w=whoOf(); return w==='solo'||w==='cookfor';
 }
@@ -2635,5 +2641,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041616').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610041618').catch(()=>{}));</script>
 </body></html>
