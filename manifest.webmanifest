@@ -1,0 +1,31 @@
+{
+ "name": "MeLab ミーラボ",
+ "short_name": "MeLab",
+ "lang": "ja",
+ "description": "食事・体調・メンタルまで見る、自分専用のAIダイエットコーチ",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#f3f6f2",
+ "theme_color": "#11795c",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
