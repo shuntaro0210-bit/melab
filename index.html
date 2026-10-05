@@ -317,7 +317,7 @@ header.top .btn{white-space:nowrap}@media (max-width:400px){header.top .date{dis
   </div>
   <label class="drop" for="photo">
     <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-    <b>写真を撮る・アルバムから選ぶ</b><span class="small muted">前に撮った写真も、何枚でも選べます。撮った日時から、日付と朝・昼・夜を自動で入れます</span>
+    <b>写真を撮る・アルバムから選ぶ</b><span class="small muted">前に撮った写真も、何枚でも選べます。撮った日時から、日付と朝・昼・夜を自動で入れます。袋や箱の商品は、裏のバーコードを撮ると一瞬で決まります</span>
     <input type="file" id="photo" accept="image/*" multiple>
   </label>
   <img id="prev" class="preview" alt="選んだ写真" hidden>
@@ -365,7 +365,7 @@ header.top .btn{white-space:nowrap}@media (max-width:400px){header.top .date{dis
   <div class="card stack" id="cookStage" hidden></div>
   <div class="card stack" id="shopCard"></div>
   <div class="card stack" id="canCook"></div>
-  <div class="row"><h2>冷蔵庫の中</h2><span class="sp"></span><button class="btn sm pri" type="button" id="toReceipt">レシートで追加</button></div>
+  <div class="row"><h2>冷蔵庫の中</h2><span class="sp"></span><label class="btn sm" style="cursor:pointer">バーコードを撮る<input type="file" accept="image/*" capture="environment" id="bcShot" hidden></label><button class="btn sm pri" type="button" id="toReceipt">レシートで追加</button></div>
   <div class="card"><div class="stock" id="stockList"></div></div>
   <div class="card stack">
     <h3>手で追加</h3>
@@ -2198,7 +2198,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610052210';
+const APPVER='202610052225';
 /* アプリを開き直したとき、新しい版が出ていれば読みこみ直す（古い画面が残らないように） */
 async function checkNewVer(){if(APPVER==='dev'||!/^https?:/.test(location.protocol))return;try{const t=await (await fetch('./?nv='+Date.now(),{cache:'no-store'})).text();const m=t.match(/const APPVER='(\d+)'/);if(m&&m[1]!==APPVER){if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.update().catch(()=>{})))}location.reload()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVer()});setTimeout(checkNewVer,1500);
@@ -2441,6 +2441,11 @@ async function read(useDemo){
   if(useDemo){res=DEMO[mode];st.textContent='見本の結果です（本物の写真ではありません）。'}
   else{
     if(!photo){st.textContent='先に写真を選んでください。';return}
+    if(mode!=='menu'&&API_BASE){st.textContent='バーコードを探しています…';const code=await bcFromImage(photo);
+      if(code){const r=await bcFind(code);
+        if(r&&r[5]>=0){const it=bcItem(r);res={title:it.name.slice(0,40),items:[{name:it.name,g:it.g,per:it.per,pf:1,ug:it.ug,bc:it.src}]};
+          st.textContent=`バーコード（${code}）から分かりました：${it.name}（${it.src}の値）。量がちがえば直してください。`;takeResult(res);return}
+        st.textContent=r?`バーコードの商品（${r[3]}）は栄養が登録されていないので、AIで読みます…`:`バーコード（${code}）の商品が見つからないので、AIで読みます…`}}
     st.textContent='AIが読み取り中…（10〜60秒くらい）';$('#readBtn').disabled=true;
     try{
       res=await ai(prompts(),{images:photo});
@@ -2598,7 +2603,7 @@ function renderResult(){
   <div class="items">${items.map((it,i)=>{if(it.ex)return '';const f=it.pf?null:findFood(it.name);const unit=f&&f.u&&mode==='receipt'?`約${r1(it.g/f.u[1])}${f.u[0]}`:'';
    const U=itU(it);
    const sw=swapIdx===i,gr=groupOf(f?f.n:it.name);
-   return `<div class="item"><button type="button" class="nm swapb" data-swap="${i}" aria-expanded="${sw}">${esc(f?f.n:it.name)}${f&&f.est?'<span class="small muted">（AIの目安）</span>':''}${f?'':`<span class="small muted">${it.off?(it.name.startsWith(DELI)?'（食品成分表の標準値）':'（公式サイトの値）'):it.pf?'（AIが公式の表示から推定）':'（AI推定）'}</span>`}</button><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>${sw?`<div class="qa stack" style="gap:6px"><b class="small">何に変える？</b>${gr?`<div class="chips">${gr.filter(n=>n!==(f?f.n:it.name)).map(n=>`<button type="button" class="chip" data-swapc="${i}|${esc(n)}">${esc(n)}</button>`).join('')}</div>`:''}<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="swapIn" class="inp" list="foodList" placeholder="その他（手入力）：何でもOK" style="flex:1;min-width:0"><button type="button" class="btn sm pri" data-swapgo="${i}">変える</button></div></div>`:''}`}).join('')}</div>
+   return `<div class="item"><button type="button" class="nm swapb" data-swap="${i}" aria-expanded="${sw}">${esc(f?f.n:it.name)}${f&&f.est?'<span class="small muted">（AIの目安）</span>':''}${f?'':`<span class="small muted">${it.bc?`（バーコード・${esc(it.bc)}の値）`:it.off?(it.name.startsWith(DELI)?'（食品成分表の標準値）':'（公式サイトの値）'):it.pf?'（AIが公式の表示から推定）':'（AI推定）'}</span>`}</button><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>${sw?`<div class="qa stack" style="gap:6px"><b class="small">何に変える？</b>${gr?`<div class="chips">${gr.filter(n=>n!==(f?f.n:it.name)).map(n=>`<button type="button" class="chip" data-swapc="${i}|${esc(n)}">${esc(n)}</button>`).join('')}</div>`:''}<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="swapIn" class="inp" list="foodList" placeholder="その他（手入力）：何でもOK" style="flex:1;min-width:0"><button type="button" class="btn sm pri" data-swapgo="${i}">変える</button></div></div>`:''}`}).join('')}</div>
   ${items.map((it,i)=>it.cands&&!it.off?`<div class="qa stack" style="gap:6px"><b class="small">「${esc(it.name)}」はどれ？（公式の値に変えます）</b><div class="chips">${it.cands.map(([n,k],j)=>`<button type="button" class="chip" data-cand="${i}|${j}">${esc(n.replace(/^\S+\s/,''))}（${k}kcal）</button>`).join('')}<button type="button" class="chip" data-swap="${i}">その他（手入力）</button></div></div>`:'').join('')}
   ${items.map((it,i)=>it.pf&&it.sizes?`<div class="qa stack" style="gap:6px"><b class="small">${esc(it.name)}のサイズはこれで合ってる？</b><div class="chips">${Object.entries(it.sizes).map(([k,g])=>`<button type="button" class="chip" data-sz="${i}|${esc(k)}" aria-pressed="${it.sz===k}">${esc(k)}（${it.szK&&it.szK[k]?it.szK[k]+'kcal':g+'g'}）</button>`).join('')}</div></div>`:'').join('')}
   ${mode==='meal'?exHTML():''}
@@ -2764,6 +2769,28 @@ async function worldSearch(q,n){
     let s=-r[3].length/40;if(tk.some(w=>wTok(r[2]).some(h=>h.startsWith(w))))s+=2;if(/Japan/.test(r[1]))s+=1;out.push([s,r])}
   return out.sort((a,b)=>b[0]-a[0]).slice(0,n||6).map(x=>x[1]);
 }
+/* ===== バーコード：番号から商品を引く（サーバーの foods/c）。番号は頭の0を外してそろえる。作る側（world/バーコード箱.py）と同じ ===== */
+const NBC=2048, BCACHE={};
+function bcKey(c){c=String(c||'').replace(/\D/g,'').replace(/^0+/,'');return c.length>=6&&c.length<=14?c:null}
+function bcBox(k){let h=0x811c9dc5;for(const ch of k){h^=ch.codePointAt(0);h=Math.imul(h,0x01000193)>>>0}return h%NBC}
+async function bcFind(code){const k=bcKey(code);if(!k||!API_BASE)return null;const b=bcBox(k);
+  if(!BCACHE[b]){try{const r=await fetch(`${API_BASE}/foods/c/${b}.json`);BCACHE[b]=r.ok?await r.json():{}}catch(e){return null}}return BCACHE[b][k]||null}
+let ZX=null;
+function zxLoad(){return ZX||(ZX=new Promise((ok,ng)=>{if(window.ZXing)return ok(window.ZXing);const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';s.onload=()=>ok(window.ZXing);s.onerror=()=>{ZX=null;ng(new Error('zxing'))};document.head.appendChild(s)}))}
+/* 写真の中のバーコードを読む。あれば番号、なければ null（スマホに読む仕組みがあればそれを使い、無ければ ZXing） */
+async function bcFromImage(f){
+  try{const img=await createImageBitmap(f);
+    if('BarcodeDetector' in window){try{const r=await new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']}).detect(img);if(r&&r[0])return r[0].rawValue}catch(e){}}
+    const Z=await zxLoad(), H=new Map();H.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.EAN_8,Z.BarcodeFormat.UPC_A,Z.BarcodeFormat.UPC_E]);H.set(Z.DecodeHintType.TRY_HARDER,true);
+    for(const mx of [1600,900]){const k=Math.min(1,mx/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      try{const rd=new Z.MultiFormatReader();rd.setHints(H);return rd.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c)))).getText()}catch(e){}}
+  }catch(e){}
+  return null;
+}
+/* 引いた商品を、記録・在庫の1品にする（容量が1kg以下なら1つ分まるごと。1個あたりの値の商品は1個） */
+function bcItem(r){const U=r[11],sz=r[4]||'',G=sizeG(sz),g=U?100:(G>0&&G<=1000?Math.round(G):100),name=(r[2]&&!String(r[3]).toLowerCase().includes(String(r[2]).toLowerCase())?r[2]+' ':'')+r[3];
+  const per=r[5]>=0?{k:r[5],p:Math.max(0,r[6]),f:Math.max(0,r[7]),c:Math.max(0,r[8]),fi:Math.max(0,r[9]),s:Math.max(0,r[10])}:null;
+  return {name:name.slice(0,80),g,per,pf:per?1:0,ug:U?100:g,src:r[0]==='J'?'メーカー公式':'公開データ',sz:U?'1'+U:sz,un:U||sizeUnit(sz,r[3])}}
 let WLAST=[];
 function addWorld(r){
   const name=(r[2]&&!r[3].toLowerCase().includes(r[2].toLowerCase())?r[2]+' ':'')+r[3], sz=r[4]||'', g=sizeG(sz)||100, un=sizeUnit(sz,r[3]);
@@ -3164,6 +3191,10 @@ function bind(){
   $('#toReceipt').addEventListener('click',()=>{go('snap');setMode('receipt')});
   $('#stName').addEventListener('input',stUnits);stUnits();
   $('#stAdd').addEventListener('click',stAddLine);$('#stText').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();stAddLine()}});$('#stText').addEventListener('input',renderSug);
+  $('#bcShot').addEventListener('change',async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;toast('バーコードを読んでいます…');
+    const code=await bcFromImage(f);if(!code){toast('バーコードが読めませんでした。線が画面いっぱいになるように、近づけて撮ってください');return}
+    const r=await bcFind(code);if(!r){toast(`この商品（${code}）は見つかりませんでした。名前で入れてください`);$('#stText').focus();return}
+    const it=bcItem(r);undoable(`${it.name}${it.sz?`（${it.sz}）`:''}を在庫に入れました（バーコード）`,()=>{addStock(it.name,it.g,{n:it.un,g:it.ug},it.per,0,'');const s=S.stock.find(x=>x.name===it.name),gen=genOf(it.name);if(s&&gen)s.gen=gen;save();renderStock();renderShop()})});
   $('#stSug').addEventListener('click',e=>{const z=e.target.closest('[data-psz]'),p=e.target.closest('[data-prod]'),g=e.target.closest('[data-sgen]');
     const fd=e.target.closest('[data-sfood]');if(fd){const P=stParse($('#stText').value);$('#stText').value=fd.dataset.sfood+(P.v!=null?` ${P.v}${P.un||''}`:'');$('#stSug').hidden=true;stAddLine();return}
     if(g){const se=SEAS.find(x=>x[0]===g.dataset.sgen);undoable(`${se[0]}を在庫に入れました`,()=>{addStock(se[0],se[1],{n:se[2],g:se[1]});save();renderStock();renderShop()});$('#stText').value='';$('#stSug').hidden=true;return}
@@ -3255,5 +3286,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610052210').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610052225').catch(()=>{}));</script>
 </body></html>
