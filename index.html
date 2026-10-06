@@ -151,6 +151,7 @@ th:first-child,td:first-child{text-align:left}
 /* ダイアログ */
 dialog{border:0;border-radius:18px;padding:0;width:min(560px,calc(100% - 24px));max-height:calc(100% - 40px);background:var(--surface);color:var(--ink)}
 dialog::backdrop{background:rgb(0 0 0 / .45)}
+.ccard{border:1px solid var(--line);border-radius:12px;padding:10px;margin:2px 0 8px;gap:6px;background:var(--bg)}
 dialog .in{padding:18px 16px;display:flex;flex-direction:column;gap:14px}
 .q{display:flex;flex-direction:column;gap:6px}
 .q .opts{display:flex;flex-wrap:wrap;gap:6px}
@@ -365,6 +366,7 @@ header.top .btn{white-space:nowrap}@media (max-width:400px){header.top .date{dis
   <div class="card stack" id="cookStage" hidden></div>
   <div class="card stack" id="shopCard"></div>
   <div class="card stack" id="canCook"></div>
+  <div class="card stack" id="seasShelf" hidden></div>
   <div class="row"><h2>冷蔵庫の中</h2><span class="sp"></span><label class="btn sm" style="cursor:pointer">バーコードを撮る<input type="file" accept="image/*" capture="environment" id="bcShot" hidden></label><button class="btn sm pri" type="button" id="toReceipt">レシートで追加</button></div>
   <div class="card"><div class="stock" id="stockList"></div></div>
   <div class="card stack">
@@ -487,6 +489,7 @@ header.top .btn{white-space:nowrap}@media (max-width:400px){header.top .date{dis
   <div class="row"><button class="btn pri" type="button" id="fbSend">送る</button><span class="small muted" id="fbSt" aria-live="polite"></span></div>
 </div></dialog>
 <dialog id="crave"><div class="in stack" id="craveIn"></div></dialog>
+<dialog id="sameDlg"><div class="in stack" id="sameIn"></div></dialog>
 
 <!-- 設定 -->
 <dialog id="settings"><div class="in">
@@ -1600,12 +1603,36 @@ function ctxText(){
 【1日の目安】${T.kcal}kcal・たんぱく質${T.p}g・脂質${T.f}g・炭水化物${T.c}g・食物繊維${T.fi}g・塩分${T.s}g未満
 【今日ここまで】${Math.round(t.k)}kcal・たんぱく質${Math.round(t.p)}g・脂質${Math.round(t.f)}g・炭水化物${Math.round(t.c)}g・塩分${r1(t.s)}g${t.alc>=1?`・純アルコール${Math.round(t.alc)}g`:''}。食べたもの：${meals||'まだなし'}
 【この1週間】${W.n?`記録${W.n}日・平均${Math.round(W.av('k'))}kcal・たんぱく質${Math.round(W.av('p'))}g・食物繊維${r1(W.av('fi'))}g・塩分${r1(W.av('s'))}g`:'記録なし'}
-${cd?`【体調】${cd}\n`:''}${(()=>{const L=ckSorted(),c=L[L.length-1];return c?`【健康診断 ${c.d}】${CKI.filter(x=>c.v[x[0]]!=null).map(x=>`${x[1]}${c.v[x[0]]}`).join('・')}\n`:''})()}${stockOn()&&S.stock.length?`【冷蔵庫】${S.stock.map(x=>x.name).join('・')}\n`:''}`;
+${cd?`【体調】${cd}\n`:''}${(()=>{const L=ckSorted(),c=L[L.length-1];return c?`【健康診断 ${c.d}】${CKI.filter(x=>c.v[x[0]]!=null).map(x=>`${x[1]}${c.v[x[0]]}`).join('・')}\n`:''})()}${stockOn()&&S.stock.length?`【冷蔵庫】${S.stock.filter(x=>!isSeasItem(x)).map(x=>`${x.name}（${fmtAmt(x.name,x.g,x.pu)}）`).join('・')||'なし'}\n【調味料】${S.stock.filter(isSeasItem).map(x=>x.name+(S.seasCount===false?'':`（残り${Math.round(x.g)}g）`)).join('・')||'なし'}\n`:''}`;
 }
 let chatBusy=false;
+/* コーチの返事の最後の <<料理>>{…} / <<決定>>{…} を読む */
+function coachParse(t){t=String(t||'');const i=t.indexOf('<<');if(i<0)return {text:t};const m=t.slice(i).replace(/```(json)?/g,'').match(/<<(料理|決定)>>\s*(\{[\s\S]*\})/);let plan=null;
+  if(m){try{const o=JSON.parse(m[2]),ing=(Array.isArray(o.ing)?o.ing:[]).map(x=>Array.isArray(x)?[String(x[0]||'').slice(0,40),+x[1]||0]:[String((x&&x.name)||'').slice(0,40),+(x&&x.g)||0]).filter(x=>x[0]&&x[1]>0&&x[1]<3000);
+    if(ing.length)plan={n:String(o.n||'コーチの料理').slice(0,40),meal:['朝','昼','夜','間食'].includes(o.meal)?o.meal:mealNow(),serv:Math.min(10,Math.max(1,Math.round(+o.serv||1))),ing}}catch(e){}}
+  return {text:t.slice(0,i).trim(),plan,done:!!(m&&m[1]==='決定')}}
+/* 決まった料理：在庫から引いて、記録に入れる（あとで量を直せる・取り消せる） */
+function coachApply(m){if(!m||m.ap||!m.plan)return;const p=m.plan,n=p.serv||1;
+  const U=stockOn()?useFromStock(p.ing.map(([name,g])=>({name,g:g*n}))):[];
+  const items=p.ing.map(([name,g],i)=>{const u=U[i],st=u&&u.parts[0]&&u.parts[0].snap;return {name,g,...(st&&st.per&&st.name===name?{per:st.per,pf:1}:{})}});
+  const id=uid();m.ap={day:TODAY,log:id,n,rows:p.ing.map(([name,g],i)=>{const u=U[i];return {name,g:g*n,parts:u?u.parts:[],has:!!u}})};
+  addLog(p.meal,p.n,items,TODAY,{id});save()}
+function cStep(n){if(SPOON[n])return SPOON[n];const H=HAND[n]||HAND[baseN(n)];if(H)return H/2;const u=unitOf(n);if(u&&u[1]<=120)return u[1]/2;return 10}
+function cAdj(i,j,dir){const m=S.chat[i],A=m&&m.ap;if(!A||A.ok)return;const r=A.rows[j],st=cStep(r.name),d=dir>0?st:-Math.min(st,r.g);if(!d)return;
+  if(d>0){if(stockOn()){const u=useFromStock([{name:r.name,g:d}])[0];if(u){r.parts.push(...u.parts);r.has=true}}}
+  else{const tk=r.parts.reduce((a,p)=>a+p.d,0);giveBack(r.parts,r.g>0?tk*(-d)/r.g:0)}
+  r.g=Math.max(0,Math.round((r.g+d)*10)/10);
+  const e=(S.logs[A.day]||[]).find(x=>x.id===A.log);if(e){const it=e.items.find(x=>x.name===r.name);if(it)it.g=Math.round(r.g/(A.n||1)*10)/10}
+  save();renderChat();renderHome();renderStock()}
+function cUndo(i){const m=S.chat[i],A=m&&m.ap;if(!A)return;A.rows.forEach(r=>giveBack(r.parts,r.parts.reduce((a,p)=>a+p.d,0)));S.logs[A.day]=(S.logs[A.day]||[]).filter(x=>x.id!==A.log);m.ap=null;save();renderChat();renderHome();renderStock();toast('取り消しました（在庫も記録も元どおり）')}
+function coachCard(m,i){const p=m.plan,A=m.ap;
+  if(!A)return `<div class="ccard stack"><b class="small">${esc(p.n)}の材料（${p.serv}人分）</b><ul class="small" style="margin:0;padding-left:1.2em">${p.ing.map(([n,g])=>`<li>${esc(n)} ${esc(amt(n,g*p.serv))}${stockOn()&&S.stock.length?(haveStock(n)?'':'<span class="muted">（在庫なし）</span>'):''}</li>`).join('')}</ul><div><button class="btn sm pri" type="button" data-capply="${i}">これで作って食べた（在庫からへらす）</button></div></div>`;
+  return `<div class="ccard stack"><b class="small">${A.ok?'✓ 在庫と記録に入れました':`${esc(p.n)}：在庫から引いて、記録に入れたよ。量は合ってる？`}</b>
+   <div class="items">${A.rows.map((r,j)=>`<div class="item"><span class="nm">${esc(r.name)}${r.has?'':'<span class="small muted">（在庫なし・記録だけ）</span>'}</span><span class="small num">${esc(amt(r.name,r.g))}</span>${A.ok?'':`<span class="row" style="gap:4px;flex-wrap:nowrap"><button class="step" type="button" data-cadj="${i}|${j}|-1" aria-label="${esc(r.name)}をへらす">−</button><button class="step" type="button" data-cadj="${i}|${j}|1" aria-label="${esc(r.name)}をふやす">＋</button></span>`}</div>`).join('')}</div>
+   ${A.ok?'':`<div class="row" style="gap:6px"><button class="btn sm pri" type="button" data-cok="${i}">合ってる</button><button class="btn sm" type="button" data-cundo="${i}">取り消す</button></div>`}</div>`}
 function renderChat(){
   const L=S.chat||[], el=$('#chatLog'); if(!el) return;
-  el.innerHTML=L.length?L.map(m=>`<div class="msg ${m.r==='u'?'me':'co'}">${m.r==='u'?'':`<span class="face sm">${coachSVG(S.coach||'f',m.t==='…'?'think':'')}</span>`}<p>${esc(m.t)}</p></div>`).join(''):`<p class="small muted" style="margin:0">あなたの記録・目安・冷蔵庫・体調を全部わかった上で答えます。下の例をタップしても聞けます。</p>`;
+  el.innerHTML=L.length?L.map((m,i)=>`<div class="msg ${m.r==='u'?'me':'co'}">${m.r==='u'?'':`<span class="face sm">${coachSVG(S.coach||'f',m.t==='…'?'think':'')}</span>`}<p>${esc(String(m.t).split('<<')[0])}</p></div>${m.r!=='u'&&m.plan?coachCard(m,i):''}`).join(''):`<p class="small muted" style="margin:0">あなたの記録・目安・冷蔵庫・体調を全部わかった上で答えます。下の例をタップしても聞けます。</p>`;
   el.scrollTop=el.scrollHeight;
 }
 async function askCoach(q){
@@ -1614,12 +1641,16 @@ async function askCoach(q){
   const g=S.coach||'f', name=COACHN[g].replace('コーチ ','');
   const sys=`あなたは食事管理アプリ「MeLab」のコーチ「${name}」です。相手のデータを全部知っている専属コーチとして答えてください。
 ルール：日本語。結論から。200字くらいまで。専門用語は使わない。メニュー名や量は具体的に（「卵1個」「ごはん茶碗軽く1杯」のような単位で）。できていることはほめ、まずいことははっきり言う。やさしいけど甘やかさない口調（${g==='f'?'女性':'男性'}のコーチ、友だちに話すくらいのくだけ方）。病気・薬・妊娠・摂食障害が関わる話は、医師に相談するよう伝える。
+量は必ず、家で量れる単位とgを両方書く（例：しょうゆ大さじ1（18g）・ほうれん草ひとつかみ（約50g）・1/2束（100g）・鶏むね肉1/2枚（150g））。
+具体的な料理を1つすすめたときだけ、返事のいちばん最後の行に次の形を1行で付ける（アプリが読む。人には見えない）：<<料理>>{"n":"料理名","meal":"朝か昼か夜か間食","serv":作る人数,"ing":[["材料名",1人分のg],...]}
+相手が「これで作る」「それにする」「これで進めて」のように決めたときは、<<料理>>の代わりに<<決定>>を付ける（中身は同じ形）。材料名は【冷蔵庫】【調味料】に書いた名前をそのまま使う（無いものはふつうの名前）。油・調味料も材料に入れる。
 ${ctxText()}`;
   const hist=S.chat.slice(0,-1).slice(-8), turns=hist.map((m,i)=>({role:m.r==='u'?'user':'assistant',content:i===0&&m.r==='u'?sys+'\n\n【相談】'+m.t:m.t}));
   if(turns[0]&&turns[0].role!=='user') turns.shift(); if(!turns.length||!turns[0].content.startsWith('あなたは')) turns[0]={role:'user',content:sys+'\n\n【相談】'+turns[0].content};
   try{if(!SAMPLE)throw {code:APP?'no_key':'unavailable'};const r=await SAMPLE(turns,{cache:false,onText:({text})=>{ans.t=text;renderChat()}});ans.t=(r&&r.text)||ans.t}
   catch(e){ans.t=(e&&e.text)||aiMsg(e)}
-  finally{chatBusy=false;S.chat=S.chat.slice(-30);save();renderChat();checkBadges()}
+  finally{chatBusy=false;const P=coachParse(ans.t);ans.t=P.text||ans.t;if(P.plan){ans.plan=P.plan;if(P.done){coachApply(ans);setTimeout(()=>toast('在庫から引いて、記録に入れました。量を確認してね'),300)}}
+    S.chat=S.chat.slice(-30);save();renderChat();checkBadges()}
 }
 
 /* ===== 健康診断の数字（国の「標準的な健診・保健指導プログラム」令和6年度版の判定値） ===== */
@@ -1837,6 +1868,8 @@ function renderShop(){
 /* ===== 量をふだんの単位で（g は横に小さく） ===== */
 const UNIT={'キャベツ':['枚',50],'わかめ（水もどし）':['つまみ',10],'ゆで卵':['個',50],'目玉焼き':['個',50],'サラダチキン':['パック',110],'豆腐バー':['本',120],'そば（ゆで）':['玉',170],'中華めん（ゆで）':['玉',230],'塩ざけ':['切れ',80],'さば（焼き）':['切れ',80],'さば缶（水煮）':['缶',150],'焼き鳥（もも）':['本',30],'鶏もも（皮なし・焼き）':['枚',200],'豚ロース（焼き）':['枚',25],'豚もも（ゆで）':['枚',17],'牛もも':['枚',20],'牛ばら':['人前',80],'まぐろ（赤身）':['切れ',12],'たい':['切れ',10],'サーモン':['切れ',12],'えび':['尾',15],'ほたて':['個',25],'あさり':['個',8],'大根（煮たもの）':['切れ',100],'厚揚げ':['枚',150],'こんにゃく':['枚',250],'枝豆':['小皿',60],'長いも':['cm',20],'レタス':['枚',30],'きゅうり':['本',100],'ミニトマト':['個',10],'小松菜':['束',200],'オクラ':['本',10],'ピーマン':['個',30],'にら':['束',100],'もやし':['袋',200],'ねぎ':['本',100],'しょうが':['かけ',15],'のり':['枚',3],'梅干し':['個',5],'全粒粉パン':['個',30],'ナン':['枚',100],'無調整豆乳':['ml',1],'しらす':['大さじ',5],'かつお節':['パック',2.5],'チャーシュー':['枚',15],'メンマ':['本',3],'八宝菜':['人前',250],'ブロッコリー（ゆで）':['房',15],'ブロッコリー':['房',15],'ほうれん草（ゆで）':['束',200]};
 const SPOON={'しょうゆ':6,'塩':6,'砂糖':3,'みりん':6,'サラダ油':4,'ごま油':4,'オリーブオイル':4,'マヨネーズ':4,'ポン酢':6,'めんつゆ':6,'すし酢':5,'ノンオイルドレッシング':5,'みそ':6,'いりごま':3,'バター':4,'オートミール':3};
+/* ひとつかみ（片手でつかんだ量）のg。葉もの・きのこ・もやし・ナッツなど */
+const HAND={'ほうれん草':50,'ほうれん草（ゆで）':50,'小松菜':50,'もやし':50,'キャベツ':50,'レタス':30,'水菜':30,'にら':30,'春菊':40,'ベビーリーフ':15,'サラダ菜':20,'チンゲン菜':50,'しめじ':30,'えのき':30,'まいたけ':30,'エリンギ':30,'ねぎ':10,'小ねぎ':10,'青ねぎ':10,'枝豆':50,'ミックスナッツ':25,'アーモンド':25,'くるみ':20,'わかめ（水もどし）':20,'しらす':15,'かつお節':3,'チーズ（シュレッド）':20,'ピザ用チーズ':20,'大葉':3,'パセリ':5,'もずく':40,'カット野菜':50,'千切りキャベツ':50};
 const LIQ={'めんつゆ':1,'無調整豆乳':1,'牛乳':1,'ポン酢':1,'ノンオイルドレッシング':1};
 function frac(x){
   const W=Math.floor(x+1e-9), r=x-W, F=[[0,''],[1/4,'1/4'],[1/3,'1/3'],[1/2,'1/2'],[2/3,'2/3'],[3/4,'3/4'],[1,'']];
@@ -1849,7 +1882,9 @@ function amt(name,g){
   g=+g||0; const G=`${g<10?r1(g):Math.round(g)}g`;
   if(name==='塩'){return g<=0.4?'少々':g<=1.2?`ひとつまみ（${r1(g)}g）`:`小さじ${frac(g/6)}（${r1(g)}g）`}
   if(SPOON[name]){const t=g/SPOON[name];if(LIQ[name]&&g>=50)return `${Math.round(g/5)*5}ml`;return t>=2.5?`大さじ${frac(t/3)}（${G}）`:`小さじ${frac(Math.max(t,0.25))}（${G}）`}
-  const u=unitOf(name); if(!u) return G;
+  const u=unitOf(name), H=HAND[name]||HAND[baseN(name)];
+  if(H&&g<=H*3.5&&!(u&&g>=u[1]*0.75)){const x=g/H, hx=Math.abs(x-1)<0.2?'ひとつかみ':x<1?(x<0.4?'少し':'軽くひとつかみ'):`ひとつかみ×${frac(x)}`;return `${hx}（${G}${u&&u[1]>=g*2&&u[0]!=='枚'?`・${frac(g/u[1])}${u[0]}`:''}）`}
+  if(!u) return G;
   if(u[0]==='ml') return `${Math.round(g)}ml`;
   if(u[0]==='cm') return `${Math.round(g/u[1])}cm（${G}）`;
   const x=g/u[1]; if(x<0.15) return `少し（${G}）`;
@@ -1905,7 +1940,9 @@ const PM={
 /* 組み合わせの栄養を計算 */
 Object.values(PM).forEach(l=>l.forEach(x=>{const t=sum(x.ing.map(([name,g])=>({name,g})));x.k=Math.round(t.k);x.p=Math.round(t.p);x.t=t}));
 const SRC={cook:'自炊',made:'作ってもらう',served:'職場・寮で出る',canteen:'社食・学食',kiosk:'売店',conv:'コンビニ',eatout:'外食',deli:'出前',skip:'食べない'};
-let planShift=0;
+let planShift=0, planOpen=false;
+/* 今の案の中身（別の案を押したとき、本当に変わったかを見る） */
+function planSig(){const T=targets(),d=S.ans&&S.ans.deep;if(!T||!d||!d.bf||!d.lunch||!d.dn)return '';try{return JSON.stringify(planAll(T,d,dayNum()+planShift).map(x=>x.it?x.it.n:x.text))}catch(e){return ''}}
 function dayNum(){return Math.floor(new Date(TODAY).getTime()/864e5)}
 function pickFrom(list,m,budget,seed,used){
   const cats=bannedCats(), al=allergyWords();
@@ -2198,7 +2235,7 @@ function waterHTML(c){const w=c.water||0;return `<div class="stack" style="gap:4
 
 
 /* ===== 改善の声（感想・使われ方の回数・コーチからの質問）。食べた物の中身は送らない ===== */
-const APPVER='202610061101';
+const APPVER='202610061305';
 /* アプリを開き直したとき、新しい版が出ていれば読みこみ直す（古い画面が残らないように） */
 async function checkNewVer(){if(APPVER==='dev'||!/^https?:/.test(location.protocol))return;try{const t=await (await fetch('./?nv='+Date.now(),{cache:'no-store'})).text();const m=t.match(/const APPVER='(\d+)'/);if(m&&m[1]!==APPVER){if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.update().catch(()=>{})))}location.reload()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVer()});setTimeout(checkNewVer,1500);
@@ -2315,12 +2352,21 @@ function renderHome(){
    :`<div class="stack" style="gap:8px"><b>16タイプ ダイエット診断</b><span class="small muted">${S.ans?'新しい16タイプ診断になりました。もう一度答えると、タイプが出ます。':'2分で、あなたのタイプと1日の目安が出ます。'}</span><button class="btn pri" type="button" onclick="openDiag()">診断する</button></div>`;
   const ph=planHTML();$('#planCard').hidden=!ph;$('#planCard').innerHTML=ph;
   const nh=nextHTML();$('#nextCard').hidden=!nh;$('#nextCard').innerHTML=nh;
-  if(nh&&ph) $('#planCard').innerHTML=`<details class="plan"><summary><b>今日の食べ方（朝・昼・晩の案）</b></summary><div class="stack" style="margin-top:10px">${ph}</div></details>`;
+  if(nh&&ph) $('#planCard').innerHTML=`<details class="plan"${planOpen?' open':''}><summary><b>今日の食べ方（朝・昼・晩の案）</b></summary><div class="stack" style="margin-top:10px">${ph}</div></details>`;
+  {const dt=$('#planCard details.plan');if(dt)dt.addEventListener('toggle',()=>{planOpen=dt.open})}
   const sh=scoreHTML();$('#scoreCard').hidden=!sh;$('#scoreCard').innerHTML=sh;renderCond();renderTre();renderAsk();checkBadges();
   renderMeals();applyStockMode();
 }
 let viewDay=null, openEntry=null, delAsk=null;
-function useFromStock(list){list.forEach(({name,g})=>{const s=haveStock(name);if(!s)return;if(name==='みそ汁'&&s.name!=='みそ汁')g*=0.12;else if(name==='ごはん'&&/米/.test(s.name))g*=0.45;s.g-=g;if(s.g<=0.5)S.stock=S.stock.filter(x=>x!==s)})}
+/* 在庫から引く。返り値は、どの在庫から何g引いたか（あとで直す・取り消すため） */
+function useFromStock(list){const out=[];list.forEach(({name,g,id})=>{const first=id?S.stock.find(x=>x.id===id):haveStock(name);if(!first){out.push(null);return}
+  if(name==='みそ汁'&&first.name!=='みそ汁')g*=0.12;else if(name==='ごはん'&&/米/.test(first.name))g*=0.45;
+  if(S.seasCount===false&&isSeasItem(first)){out.push({name,g,parts:[],keep:1});return} /* 調味料の量を数えない人は引かない */
+  const L=[first,...(id?[]:allStock(name).filter(x=>x!==first))],parts=[];let left=g;
+  L.forEach((s,i)=>{if(left<=0)return;const d=i===L.length-1?left:Math.min(s.g,left);parts.push({id:s.id,d,snap:{...s}});s.g-=d;left-=d});
+  S.stock=S.stock.filter(s=>s.g>0.5);out.push({name,g,parts})});return out}
+/* 引いた分を在庫にもどす（なくなって消えていたら、もう一度入れる） */
+function giveBack(parts,amt){for(let i=parts.length-1;i>=0&&amt>0.001;i--){const p=parts[i],d=Math.min(p.d,amt);if(d<=0)continue;const s=S.stock.find(x=>x.id===p.id);if(s)s.g+=d;else S.stock.push({...p.snap,g:d});p.d-=d;amt-=d}}
 function renderMy(){
   const L=S.my||[];
   $('#myList').innerHTML=L.length?L.map(m=>`<div class="row"><span style="flex:1;min-width:0"><b>${esc(m.name)}</b><span class="small muted num">　${Math.round(sum(m.items).k)}kcal</span></span><button class="btn sm pri" type="button" data-myeat="${m.id}">食べた</button><button class="x" type="button" data-myrm="${m.id}" aria-label="${esc(m.name)}をマイ料理から外す">×</button></div>`).join(''):'';
@@ -2431,7 +2477,7 @@ async function ai(prompt,opts){if(!SAMPLE) throw {code:APP?'no_key':'unavailable
 function prompts(){
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、'); const T=targets();
   return {
-   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真を見て、まず何の料理か（焼肉・焼き鳥・鍋・寿司・ラーメン・うどん・丼・カレー・定食・中華・パスタ・家庭料理など）と、どこで食べたものかを判断してください。見分けにくいものは見た目の特徴で区別してください。きのこ：えのき＝白く細長い軸が束になり小さなかさ／しめじ＝茶色か白の丸いかさが株にまとまる／しいたけ＝大きく平たい茶色のかさ、裏にひだ／まいたけ＝灰色〜茶色のひらひらが重なる／エリンギ＝太く白い軸に小さなかさ／マッシュルーム＝白か茶の丸いかさ。寿司ネタ：まぐろ赤身＝濃い赤／中トロ・大トロ＝ピンクで白い脂のすじ／サーモン＝オレンジに白いすじ／はまち・ぶり＝白っぽいピンクで血合いが赤黒い／鯛・ひらめ＝白く半透明／いか＝白く不透明／たこ＝赤紫のふち／えび＝赤と白のしま／甘えび＝半透明のオレンジ／ほたて＝白く丸い／穴子・うなぎ＝茶色でたれ／いくら＝オレンジの粒／うに＝黄色〜オレンジ。次に、皿・茶わん・箸・手などの大きさと比べて量を見積もり、写っている食べ物を材料ごとに分け（ただし、コンビニやスーパーのお惣菜・メーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める。大盛りなど量のちがう種類が売られている商品だけ sizes に {"普通":g,"大盛り":g}、sz に写真から見た種類を入れる）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに同じ食材があれば、その名前をそのまま使ってください（似ているだけの別の食材の名前にしない。例：えのきをしめじに、ぶりをはまちにしない。リストに無ければその食材のふつうの名前のまま）：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。まずどこのお店か分かれば store に店名を入れてください（器・トレー・包み紙・カップ・ロゴ・皿の色・のぼり・レシートから判断。次のお店は公式の値があるので、分かれば必ずこの名前で：${STORE_EX}。ほかのお店も分かれば店名を入れる）。お店が分かったら、商品は「店名＋そのお店のメニュー名」（例：すき家 キムチ牛丼 並盛、くら寿司 熟成まぐろ）にしてください。次に、これが何の食事かを kind に入れてください：home（家で作った料理）／yakiniku（焼肉）／yakitori（焼き鳥）／nabe（鍋）／sushi（寿司）／ramen（ラーメン・つけ麺）／udon（うどん・そば）／don（丼）／curry（カレー）／teishoku（定食）／chuka（中華）／pasta（パスタ）／kona（お好み焼き・たこ焼き）／izakaya（居酒屋）／fastfood（ファストフード）／famires（ファミレス）／cafe（カフェ）／italian（イタリアン）／french（フレンチ）／yoshoku（洋食）／bento（弁当）／ethnic（エスニック・韓国）／sweets（スイーツ・パン）／eatout（そのほかの外食）／product（コンビニ・スーパーの商品やお惣菜）。dish には種類を次から1つ入れてください：ラーメン＝醤油・塩・味噌・豚骨・家系・二郎系・担々麺・魚介豚骨・鶏白湯・タンメン・ちゃんぽん・つけ麺・冷やし中華・油そば／うどん・そば＝かけ・きつね・たぬき・天ぷら・月見・肉・カレー・わかめ・ざる・もり・ぶっかけ・釜玉・鍋焼き／鍋＝寄せ鍋・水炊き・もつ鍋・キムチ鍋・しゃぶしゃぶ・すき焼き・ちゃんこ鍋・豆乳鍋・湯豆腐・おでん・石狩鍋・カレー鍋・トマト鍋・ちり鍋・鶏白湯鍋／丼＝牛丼・豚丼・親子丼・カツ丼・天丼・海鮮丼・ねぎとろ丼・うな丼・中華丼・麻婆丼／カレー＝ビーフ・ポーク・チキン・キーマ・カツカレー・スープカレー・グリーンカレー・バターチキン／パスタ＝ミートソース・カルボナーラ・ペペロンチーノ・ナポリタン・たらこ・ボンゴレ・ジェノベーゼ・トマトクリーム・和風きのこ／そのほかのジャンルは ${KINDS.filter(k=>DISH[k]&&['famires','cafe','italian','french','yoshoku','bento','ethnic','sweets'].includes(k)).map(k=>DISH[k].l+'＝'+DISH[k].t.join('・')).join('／')}。ラーメン・うどん・そば・パスタは、めんとスープ（つゆ）を items に入れず、トッピングや具だけを入れてください（めんとスープはあとで種類と量を確認します）。うどんかそばかは men に udon／soba で入れてください。丼・カレー・定食のごはんは items に「ごはん」で入れて g に量を入れてください。牛丼・親子丼の上は「牛丼の具」「親子丼の具」の名前で入れてください。焼肉は肉を部位ごとに分け（牛タン・ハラミ・カルビ・ロース・ホルモンなど。次のリストの部位名を使う）、n に人前の数を入れてください（書いていなければ1人前）。焼き鳥は串の種類ごとに分け（もも・ねぎま・つくね・皮・レバー・砂肝など）、n に本数を入れてください。鍋は具（肉・魚・豆腐・野菜・きのこ・しらたき・しめのごはんや麺）を1人分に分けてください。寿司は1貫ずつネタごとに分けてリストの「（握り）」「（軍艦）」の名前を使い、n に貫数（回転寿司の1皿は2貫）。巻物は n に本数。しょうゆは items に入れないでください。焼肉・焼き鳥のたれや塩、鍋のポン酢・ごまだれ、料理に使った油・塩・こしょうは items に入れないでください（あとで本人に確認します）。焼肉・焼き鳥がたれか塩か、鍋のつけだれがポン酢かごまだれか分かれば sauce に tare／shio／ponzu／goma で入れてください（分からなければ空）。家で作った料理なら、使っていそうな油の量を oil に大さじの数で入れてください（例：0.5、1。揚げ物や炒め物は多め、油を使わない料理は0）。次のJSONだけを返してください：{"title":"料理名","store":"","kind":"","dish":"","men":"","sauce":"","oil":0,"items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0}]}`,
+   meal:`${$('#cookSelf').checked?`家で作った料理です。写真に写っているのは${$('#cookShot').value==='all'?`作った全部（${$('#cookN').value}人分）`:'1人分の1皿'}です。${$('#cookMemo').value.trim()?`作った人のメモ（材料と量）：${$('#cookMemo').value.trim()}。メモの材料と量を優先し、写真に写っている分に合わせてください。`:''}`:''}この食事の写真を見て、まず何の料理か（焼肉・焼き鳥・鍋・寿司・ラーメン・うどん・丼・カレー・定食・中華・パスタ・家庭料理など）と、どこで食べたものかを判断してください。見分けにくいものは見た目の特徴で区別してください。きのこ：えのき＝白く細長い軸が束になり小さなかさ／しめじ＝茶色か白の丸いかさが株にまとまる／しいたけ＝大きく平たい茶色のかさ、裏にひだ／まいたけ＝灰色〜茶色のひらひらが重なる／エリンギ＝太く白い軸に小さなかさ／マッシュルーム＝白か茶の丸いかさ。寿司ネタ：まぐろ赤身＝濃い赤／中トロ・大トロ＝ピンクで白い脂のすじ／サーモン＝オレンジに白いすじ／はまち・ぶり＝白っぽいピンクで血合いが赤黒い／鯛・ひらめ＝白く半透明／いか＝白く不透明／たこ＝赤紫のふち／えび＝赤と白のしま／甘えび＝半透明のオレンジ／ほたて＝白く丸い／穴子・うなぎ＝茶色でたれ／いくら＝オレンジの粒／うに＝黄色〜オレンジ。次に、皿・茶わん・箸・手などの大きさと比べて量を見積もり、写っている食べ物を材料ごとに分け（ただし、コンビニやスーパーのお惣菜・メーカーの商品のパッケージ・ラベル・容器が写っていたら材料に分けず、商品1つとして name に「店名＋商品名」、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値を入れる。量を人に聞かずに決める。大盛りなど量のちがう種類が売られている商品だけ sizes に {"普通":g,"大盛り":g}、sz に写真から見た種類を入れる）、見た目からグラム数を推定してください。名前は日本語で。数えられる食べ物（卵・ゆで卵・おにぎり・パン・焼き鳥・からあげ・ぎょうざ・すし・ウインナー・果物など）は、写っている数を1つずつ正確に数えて n に整数で入れてください（見えない分は足さない。半分に切れていれば0.5）。数えられないもの（ごはん・汁物・サラダなど）は n を0にして g だけ入れてください。次の食品リストに同じ食材があれば、その名前をそのまま使ってください（似ているだけの別の食材の名前にしない。例：えのきをしめじに、ぶりをはまちにしない。リストに無ければその食材のふつうの名前のまま）：${names}。リストに無いものは name に名前を入れ、per に100gあたりの推定値 {"k":kcal,"p":たんぱく質g,"f":脂質g,"c":炭水化物g,"fi":食物繊維g,"s":食塩相当量g,"kp":カリウムmg,"ca":カルシウムmg,"fe":鉄mg,"vd":ビタミンDµg,"b12":ビタミンB12µg,"vc":ビタミンCmg,"fol":葉酸µg} を入れてください（日本食品標準成分表の考え方で）。調味料（しょうゆ・塩・マヨネーズ・ドレッシング・つゆ）も量を推定して入れてください。袋・箱・容器の「栄養成分表示」が写っていたら、その数値を優先して使ってください（1袋・1個あたりの値なら、その量を g に、100gあたりに直した値を per に入れる。商品名も name に）。飲みもの（お酒・ジュース・コーヒー・お茶など）が写っていたら、それも1品として入れてください。量は入れ物（グラス・ジョッキ・缶・ペットボトル・カップ・おちょこ）の大きさと残っている量から ml で推定し、g に ml の数を入れます（目安：中ジョッキ約350ml、大ジョッキ約700ml、メガジョッキ約700ml、缶350mlか500ml、ペットボトル500ml、ワイングラス1杯120ml、カクテルグラス150ml、おちょこ30ml、コーヒーのS240・M350・L470ml）。缶やラベルの商品名・アルコール度数・栄養表示が読めたら、それを優先してください。飲みものは次のリストに近ければその名前をそのまま使ってください：${DRK.map(d=>d.n).join('、')}。リストに無い飲みものは per に100mlあたりの推定値と、abv にアルコール度数（%。お酒でなければ0）を入れてください。料理名（献立の名前。複数あれば「・」でつなぐ。例：肉じゃが・ごはん・みそ汁・生ビール）を title に入れてください。まずどこのお店か分かれば store に店名を入れてください（器・トレー・包み紙・カップ・ロゴ・皿の色・のぼり・レシートから判断。次のお店は公式の値があるので、分かれば必ずこの名前で：${STORE_EX}。ほかのお店も分かれば店名を入れる）。お店が分かったら、商品は「店名＋そのお店のメニュー名」（例：すき家 キムチ牛丼 並盛、くら寿司 熟成まぐろ）にしてください。次に、これが何の食事かを kind に入れてください：home（家で作った料理）／yakiniku（焼肉）／yakitori（焼き鳥）／nabe（鍋）／sushi（寿司）／ramen（ラーメン・つけ麺）／udon（うどん・そば）／don（丼）／curry（カレー）／teishoku（定食）／chuka（中華）／pasta（パスタ）／kona（お好み焼き・たこ焼き）／izakaya（居酒屋）／fastfood（ファストフード）／famires（ファミレス）／cafe（カフェ）／italian（イタリアン）／french（フレンチ）／yoshoku（洋食）／bento（弁当）／ethnic（エスニック・韓国）／sweets（スイーツ・パン）／eatout（そのほかの外食）／product（コンビニ・スーパーの商品やお惣菜）。dish には種類を次から1つ入れてください：ラーメン＝醤油・塩・味噌・豚骨・家系・二郎系・担々麺・魚介豚骨・鶏白湯・タンメン・ちゃんぽん・つけ麺・冷やし中華・油そば／うどん・そば＝かけ・きつね・たぬき・天ぷら・月見・肉・カレー・わかめ・ざる・もり・ぶっかけ・釜玉・鍋焼き／鍋＝寄せ鍋・水炊き・もつ鍋・キムチ鍋・しゃぶしゃぶ・すき焼き・ちゃんこ鍋・豆乳鍋・湯豆腐・おでん・石狩鍋・カレー鍋・トマト鍋・ちり鍋・鶏白湯鍋／丼＝牛丼・豚丼・親子丼・カツ丼・天丼・海鮮丼・ねぎとろ丼・うな丼・中華丼・麻婆丼／カレー＝ビーフ・ポーク・チキン・キーマ・カツカレー・スープカレー・グリーンカレー・バターチキン／パスタ＝ミートソース・カルボナーラ・ペペロンチーノ・ナポリタン・たらこ・ボンゴレ・ジェノベーゼ・トマトクリーム・和風きのこ／そのほかのジャンルは ${KINDS.filter(k=>DISH[k]&&['famires','cafe','italian','french','yoshoku','bento','ethnic','sweets'].includes(k)).map(k=>DISH[k].l+'＝'+DISH[k].t.join('・')).join('／')}。ラーメン・うどん・そば・パスタは、めんとスープ（つゆ）を items に入れず、トッピングや具だけを入れてください（めんとスープはあとで種類と量を確認します）。うどんかそばかは men に udon／soba で入れてください。丼・カレー・定食のごはんは items に「ごはん」で入れて g に量を入れてください。牛丼・親子丼の上は「牛丼の具」「親子丼の具」の名前で入れてください。焼肉は肉を部位ごとに分け（牛タン・ハラミ・カルビ・ロース・ホルモンなど。次のリストの部位名を使う）、n に人前の数を入れてください（書いていなければ1人前）。焼き鳥は串の種類ごとに分け（もも・ねぎま・つくね・皮・レバー・砂肝など）、n に本数を入れてください。鍋は具（肉・魚・豆腐・野菜・きのこ・しらたき・しめのごはんや麺）を1人分に分けてください。寿司は1貫ずつネタごとに分けてリストの「（握り）」「（軍艦）」の名前を使い、n に貫数（回転寿司の1皿は2貫）。巻物は n に本数。しょうゆは items に入れないでください。焼肉・焼き鳥のたれや塩、鍋のポン酢・ごまだれ、料理に使った油・塩・こしょうは items に入れないでください（あとで本人に確認します）。焼肉・焼き鳥がたれか塩か、鍋のつけだれがポン酢かごまだれか分かれば sauce に tare／shio／ponzu／goma で入れてください（分からなければ空）。家で作った料理なら、使っていそうな油の量を oil に大さじの数で入れてください（例：0.5、1。揚げ物や炒め物は多め、油を使わない料理は0）。m には、その量を家で量るときの目安を入れる（例：大さじ1、小さじ1/2、ひとつかみ、1/2束、茶碗軽く1杯、1切れ、手のひら1枚分）。次のJSONだけを返してください：{"title":"料理名","store":"","kind":"","dish":"","men":"","sauce":"","oil":0,"items":[{"name":"","g":0,"n":0,"prod":false,"sizes":null,"sz":"","per":null,"abv":0,"m":""}]}`,
    menu:`外食のメニューの写真です。ダイエット中の人（1食の目安 ${T?Math.round(T.kcal/3):650}kcal、たんぱく質を多めにとりたい）向けに、${styleNote()?'次の条件も守ってください。'+styleNote().replace(/\n/g,'／')+'。':''}メニューから最大5品を選び、1人前の推定カロリー・たんぱく質g・脂質g・炭水化物g・食物繊維g・食塩相当量g・判定（おすすめ／ふつう／控えめに のどれか）・短い理由を付けてください。次のJSONだけを返してください：{"options":[{"name":"","kcal":0,"p":0,"f":0,"c":0,"fi":0,"s":0,"verdict":"","reason":""}]}`,
    receipt:`買い物のレシートの写真です。食材だけを抜き出し、次のリストに同じ食材があればその名前を使い（似ているだけの別の食材の名前にしない。例：えのきをしめじに、ぶりをはまちにしない。リストに無ければその食材のふつうの名前のまま）、量をグラムで推定してください：${names}。コンビニやスーパーのお惣菜・お弁当・麺・おにぎり・サラダなどの商品は、リストの名前にせず name に「店名＋商品名」（店名が分からないお惣菜は「スーパー＋料理名」）、prod に true、g に1個の内容量、n に個数、per に公式の栄養成分表示を100gあたりに直した値（{"k":0,"p":0,"f":0,"c":0,"fi":0,"s":0}）を入れてください。次のJSONだけを返してください：{"items":[{"name":"","g":0,"n":0,"prod":false,"per":null}]}`
   }[mode];
@@ -2467,16 +2513,27 @@ function stockOn(){
 }
 
 function applyStockMode(){const on=stockOn();$('[data-v="stock"]').hidden=!on;$('[data-mode="receipt"]').hidden=!on;$('#cookBox').hidden=!on||mode!=='meal';if(!on&&mode==='receipt')setMode('meal');if(SIMPLE)$('.seg').hidden=!on}
-function stockOf(name){const f=findFood(name);return S.stock.find(x=>x.name===name||(f&&x.name===f.n))||null}
+function stockOf(name){const f=findFood(name);return S.stock.find(x=>x.name===name||(f&&x.name===f.n))||haveStock(name)||null}
 /* 自分で作った？何人分？写真は？ → 自分の1人分と、在庫から引く量を出す */
 /* 料理に使った油・塩こしょう（100gあたり）。大さじ1＝油12g */
 const OILS={'サラダ油':{k:921,f:100},'オリーブオイル':{k:894,f:100},'ごま油':{k:890,f:100},'米油':{k:921,f:100},'バター':{k:700,f:81,p:0.6,c:0.2,s:1.9},'ギー':{k:897,f:99.7},'ラード':{k:885,f:100},'ココナッツオイル':{k:889,f:100}};
 const OAMT=[['0.33','小さじ1'],['0.5','大さじ½'],['1','大さじ1'],['1.5','大さじ1½'],['2','大さじ2'],['3','大さじ3']], SALT={'なし':0,'少し':0.5,'ふつう':1,'多め':2};
 const KINDS=['home','yakiniku','yakitori','nabe','sushi','ramen','udon','don','curry','teishoku','chuka','pasta','kona','izakaya','fastfood','famires','cafe','italian','french','yoshoku','bento','ethnic','sweets','eatout','product'];
+/* 自分の在庫の油（棚の油・メーカーの油） */
+const OILK=['サラダ油','ごま油','オリーブオイル','バター'];
+function myOils(){return stockOn()?S.stock.filter(s=>OILK.includes(seasKey(s))):[]}
+function oilOpts(){const M=myOils(),o=[['なし','なし']];M.forEach(s=>o.push([s.name,s.name+'（在庫）']));Object.keys(OILS).forEach(k=>{if(!M.some(s=>s.name===k||seasKey(s)===k&&s.name===k))o.push([k,k])});return o}
+function oilPer(v){if(OILS[v])return OILS[v];const s=S.stock.find(x=>x.name===v);if(s&&s.per&&s.per.k>0)return {k:s.per.k,f:s.per.f||0,p:s.per.p||0,c:s.per.c||0,s:s.per.s||0};const t=s&&shelfT(s.typ||s.name);if(t){const e=exPer(t[2]);if(e.k>0)return {k:e.k,f:e.f,p:e.p,c:e.c,s:e.s}}const k=seasKey(s||{name:v});return OILS[k]||OILS['サラダ油']}
+/* 自分で作った料理：使った油・塩こしょうを、在庫のどれから引くか */
+function exUse(){const x=pending&&pending.ex,c=pending&&pending.cook;if(!x||x.kind!=='home'||!c||!c.self||!stockOn())return [];const n=c.n||1,off=pending.exOff||{},o=[];
+  if(x.oil&&x.oil!=='なし'){const s=S.stock.find(z=>z.name===x.oil)||haveStock(x.oil);if(s)o.push({name:s.name,id:s.id,key:seasKey(s)||x.oil,g:Math.round(+x.amt*12*n*10)/10,lab:'料理に使った油'})}
+  const sg=(SALT[x.salt]||0)*n;if(sg){const s=haveStock('塩')||haveStock('こしょう');if(s)o.push({name:s.name,id:s.id,key:'塩',g:sg,lab:'塩・こしょう'})}
+  return o.map(u=>({...u,on:!off[u.lab]}))}
 function exDefault(res){const kd=KINDS.includes(res&&res.kind)?res.kind:'',self=$('#cookSelf').checked||!!(pending.cook&&pending.cook.self);
   const kind=self&&!['yakiniku','yakitori','nabe'].includes(kd)?'home':kd||(res&&res.home?'home':'eatout'), home=kind==='home', P=S.oilPref||{}, sc=res&&res.sauce;
   const ai=+(res&&res.oil)||0, near=ai>0?OAMT.reduce((a,b)=>Math.abs(+b[0]-ai)<Math.abs(+a[0]-ai)?b:a)[0]:null;
-  pending.ex={kind,oil:home?(ai===0&&kd==='home'?'なし':(P.t||'サラダ油')):'なし',amt:near||P.a||'1',salt:home?(S.saltPref||'ふつう'):'なし',
+  const myO=myOils(), defO=P.t&&(OILS[P.t]||myO.some(s=>s.name===P.t))?P.t:(myO[0]||{}).name||'サラダ油';
+  pending.ex={kind,oil:home?(ai===0&&kd==='home'?'なし':defO):'なし',amt:near||P.a||'1',salt:home?(S.saltPref||'ふつう'):'なし',
     shoyu:S.shoyuPref||'少し',...dishDefault(kind,res),store:String(res&&res.store||'').slice(0,20),tare:sc==='shio'?'塩':sc==='tare'?'たれ':(kind==='yakiniku'?S.yakiPref:S.toriPref)||'たれ',dip:sc==='goma'?'ごまだれ':sc==='ponzu'?'ポン酢':S.nabePref||'ポン酢',dipAmt:'ふつう'};
   const X=pending.ex;if(kind==='nabe'&&!['goma','ponzu'].includes(sc)&&!DISH.nabe.dip.includes(X.dish))X.dip='なし'; /* つけだれは水炊き・しゃぶしゃぶなどだけ */
   /* 全部がお店の公式の商品なら、めん・スープ・ごはんを足さない（二重に数えない） */
@@ -2535,7 +2592,7 @@ function applyEx(){if(!pending||!pending.ex)return;const x=pending.ex;pending.it
   if(x.kind==='sushi'){const n=exCount('貫')+exCount('本')*6,g={'つけない':0,'少し':1,'ふつう':2,'多め':3}[x.shoyu]||0;add('しょうゆ','＜調味料類＞ （しょうゆ類） こいくちしょうゆ',g*n);return}
   if(x.kind==='nabe'){const m={'少し':0.5,'ふつう':1,'たっぷり':1.6}[x.dipAmt]||1;if(!x.dip)return;if(x.dip==='ポン酢')add('ポン酢','＜調味料類＞ （調味ソース類） ぽん酢しょうゆ 市販品',30*m);if(x.dip==='ごまだれ')add('ごまだれ','＜調味料類＞ （調味ソース類） ごまだれ',30*m);return}
   if(x.kind!=='home')return;
-  if(x.oil!=='なし'&&OILS[x.oil])pending.items.push({name:x.oil+'（料理に使った油）',g:Math.round(+x.amt*12*10)/10,pf:1,ex:1,per:{k:0,p:0,f:0,c:0,fi:0,s:0,...OILS[x.oil]}});
+  if(x.oil&&x.oil!=='なし')pending.items.push({name:x.oil+'（料理に使った油）',g:Math.round(+x.amt*12*10)/10,pf:1,ex:1,per:{k:0,p:0,f:0,c:0,fi:0,s:0,...oilPer(x.oil)}});
   if(SALT[x.salt])pending.items.push({name:'塩こしょう',g:SALT[x.salt],pf:1,ex:1,per:{k:0,p:0,f:0,c:0,fi:0,s:99}})}
 function exHTML(){const x=pending.ex;if(!x)return '';const ch=(k,v,l)=>`<button type="button" class="chip" data-ox="${k}|${v}" aria-pressed="${x[k]===v}">${l||v}</button>`;
   const other=`<details class="small muted"><summary>ちがう料理なら</summary><div class="chips" style="margin-top:6px">${[['home','自分で作った'],...Object.entries(DISH).map(([k,v])=>[k,v.l]),['eatout','そのほかの外食']].filter(([k])=>k!==x.kind).map(([k,l])=>ch('kind',k,l)).join('')}</div></details>`;
@@ -2561,8 +2618,8 @@ function exHTML(){const x=pending.ex;if(!x)return '';const ch=(k,v,l)=>`<button 
   if(x.kind==='sushi')return `<div class="qa stack" style="gap:6px"><b class="small">しょうゆは？</b><div class="chips">${['つけない','少し','ふつう','多め'].map(o=>ch('shoyu',o)).join('')}</div><span class="small muted">ネタがちがうときは、名前を押すと変えられます</span>${other}</div>`;
   if(x.kind==='nabe')return `<div class="qa stack" style="gap:6px"><b class="small">つけだれは？</b><div class="chips">${['ポン酢','ごまだれ','なし'].map(o=>ch('dip',o,o==='なし'?'なし（スープに味がついてる）':o)).join('')}</div>${x.dip!=='なし'?`<b class="small">どのくらい？</b><div class="chips">${['少し','ふつう','たっぷり'].map(o=>ch('dipAmt',o)).join('')}</div>`:''}${other}</div>`;
   if(x.kind!=='home')return `<div class="small muted">${other.replace('ちがう料理なら：','味つけを足すなら：')}</div>`;
-  return `<div class="qa stack" style="gap:6px"><b class="small">作るときに使った油は？（外食・コンビニなら「なし」のまま）</b><div class="chips">${['なし',...Object.keys(OILS)].map(o=>ch('oil',o,o)).join('')}</div>
-   ${x.oil!=='なし'?`<b class="small">どのくらい？（あなたの1皿に入った分）</b><div class="chips">${OAMT.map(([v,l])=>ch('amt',v,l)).join('')}</div>`:''}
+  return `<div class="qa stack" style="gap:6px"><b class="small">作るときに使った油は？（外食・コンビニなら「なし」のまま）</b><div class="chips">${oilOpts().map(([v,l])=>ch('oil',v,l)).join('')}</div>
+   ${x.oil!=='なし'?`<b class="small">どのくらい？（あなたの1皿に入った分。大さじ1＝油12g）</b><div class="chips">${OAMT.map(([v,l])=>ch('amt',v,`${l}（${Math.round(+v*12*10)/10}g）`)).join('')}</div>`:''}
    <b class="small">塩・こしょうは？</b><div class="chips">${Object.keys(SALT).map(o=>ch('salt',o,o)).join('')}</div>${other}</div>`}
 function applyCook(){
   const c=pending.cook, n=c.n||1; if(!stockOn())c.self=false;
@@ -2580,10 +2637,13 @@ function cookQHTML(){
     <b class="small">Q3. 写真に写っているのは？</b><div class="chips">${chip('all','0','自分の1皿',!c.all)}${chip('all','1','作った全部（鍋・大皿）',c.all)}</div>
     <b class="small">Q4. 在庫からこれだけ引いていい？（ちがう量は直してね）</b>
     ${pending.use.length?`<div class="items">${pending.use.map((u,i)=>{const U=unitOf(u.name),st=stockOf(u.name);return `<div class="item"><label class="nm" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-uon="${i}"${u.on?' checked':''}>${esc(u.name)}</label><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.25:10}" value="${U?r1(u.g/U[1]):u.g}" data-ug="${i}" data-u="${U?U[1]:1}" aria-label="${esc(u.name)}の使った量" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted">残り ${amt(st.name,Math.max(0,st.g-(u.on?u.g:0))).replace(/（.*）/,'')}</span></div>`}).join('')}</div>`:'<p class="small muted" style="margin:0">在庫に入っている食材はありませんでした。</p>'}
+    ${exUse().length?`<b class="small">作るときに使った油・塩も、在庫から引く？</b><div class="items">${exUse().map(u=>`<div class="item"><label class="nm" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-exon="${esc(u.lab)}"${u.on?' checked':''}>${esc(u.name)}</label><span class="small num">${esc(amt(u.key,u.g))}</span><span class="small muted">${esc(u.lab)}（${pending.cook.n||1}人分）</span></div>`).join('')}</div>`:''}
     ${pending.base.filter(i=>!stockOf(i.name)).length?`<p class="small muted" style="margin:0">在庫に無いもの（引かない）：${pending.base.filter(i=>!stockOf(i.name)).map(i=>esc(i.name)).join('・')}</p>`:''}`;
   }
   return h+'</div>';
 }
+/* 量を、家で量れる単位で（大さじ1・ひとつかみ・1/2束）。表に無いものはAIの目安 */
+function hintOf(n,it){const a=amt(n,+it.g||0).replace(/（.*）$/,'');const t=/[^\d.g]/.test(a)?a:(it.m?String(it.m).slice(0,16):'');return t?`<span class="small muted">（${esc(t)}）</span>`:''}
 function renderResult(){
   const box=$('#result');box.hidden=false;
   if(mode==='menu'){
@@ -2603,7 +2663,7 @@ function renderResult(){
   <div class="items">${items.map((it,i)=>{if(it.ex)return '';const f=it.pf?null:findFood(it.name);const unit=f&&f.u&&mode==='receipt'?`約${r1(it.g/f.u[1])}${f.u[0]}`:'';
    const U=itU(it);
    const sw=swapIdx===i,gr=groupOf(f?f.n:it.name);
-   return `<div class="item"><button type="button" class="nm swapb" data-swap="${i}" aria-expanded="${sw}">${esc(f?f.n:it.name)}${f&&f.est?'<span class="small muted">（AIの目安）</span>':''}${f?'':`<span class="small muted">${it.bc?`（バーコード・${esc(it.bc)}の値）`:it.off?(it.name.startsWith(DELI)?'（食品成分表の標準値）':'（公式サイトの値）'):it.pf?'（AIが公式の表示から推定）':'（AI推定）'}</span>`}</button><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>${sw?`<div class="qa stack" style="gap:6px"><b class="small">何に変える？</b>${gr?`<div class="chips">${gr.filter(n=>n!==(f?f.n:it.name)).map(n=>`<button type="button" class="chip" data-swapc="${i}|${esc(n)}">${esc(n)}</button>`).join('')}</div>`:''}<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="swapIn" class="inp" list="foodList" placeholder="その他（手入力）：何でもOK" style="flex:1;min-width:0"><button type="button" class="btn sm pri" data-swapgo="${i}">変える</button></div></div>`:''}`}).join('')}</div>
+   return `<div class="item"><button type="button" class="nm swapb" data-swap="${i}" aria-expanded="${sw}">${esc(f?f.n:it.name)}${mode==='meal'?hintOf(f?f.n:it.name,it):''}${f&&f.est?'<span class="small muted">（AIの目安）</span>':''}${f?'':`<span class="small muted">${it.bc?`（バーコード・${esc(it.bc)}の値）`:it.off?(it.name.startsWith(DELI)?'（食品成分表の標準値）':'（公式サイトの値）'):it.pf?'（AIが公式の表示から推定）':'（AI推定）'}</span>`}</button><span class="row" style="gap:4px;flex-wrap:nowrap"><input type="number" inputmode="decimal" min="0" step="${U?0.5:10}" value="${U?r1(it.g/U[1]):it.g}" data-g="${i}" data-u="${U?U[1]:1}" aria-label="${esc(it.name)}の量（${U?U[0]:'g'}）" style="width:4.5em"><span class="small">${U?esc(U[0]):'g'}</span></span><span class="small muted num">${mode==='meal'?Math.round(nut(it).k)+'kcal':''}</span><button class="x" type="button" data-rm="${i}" aria-label="${esc(it.name)}を外す">×</button></div>${sw?`<div class="qa stack" style="gap:6px"><b class="small">何に変える？</b>${gr?`<div class="chips">${gr.filter(n=>n!==(f?f.n:it.name)).map(n=>`<button type="button" class="chip" data-swapc="${i}|${esc(n)}">${esc(n)}</button>`).join('')}</div>`:''}<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="swapIn" class="inp" list="foodList" placeholder="その他（手入力）：何でもOK" style="flex:1;min-width:0"><button type="button" class="btn sm pri" data-swapgo="${i}">変える</button></div></div>`:''}`}).join('')}</div>
   ${items.map((it,i)=>it.cands&&!it.off?`<div class="qa stack" style="gap:6px"><b class="small">「${esc(it.name)}」はどれ？（公式の値に変えます）</b><div class="chips">${it.cands.map(([n,k],j)=>`<button type="button" class="chip" data-cand="${i}|${j}">${esc(n.replace(/^\S+\s/,''))}（${k}kcal）</button>`).join('')}<button type="button" class="chip" data-swap="${i}">その他（手入力）</button></div></div>`:'').join('')}
   ${items.map((it,i)=>it.pf&&it.sizes?`<div class="qa stack" style="gap:6px"><b class="small">${esc(it.name)}のサイズはこれで合ってる？</b><div class="chips">${Object.entries(it.sizes).map(([k,g])=>`<button type="button" class="chip" data-sz="${i}|${esc(k)}" aria-pressed="${it.sz===k}">${esc(k)}（${it.szK&&it.szK[k]?it.szK[k]+'kcal':g+'g'}）</button>`).join('')}</div></div>`:'').join('')}
   ${mode==='meal'?exHTML():''}
@@ -2672,9 +2732,10 @@ async function stAddLine(){
   if(RICE_RE.test(P.name)){riceFood();const g=P.g!=null?P.g:/合/.test(P.un)?P.v*150:/袋/.test(P.un)||P.v==null?(P.v||1)*5000:P.v*150;
     undoable('お米を在庫に入れました',()=>{addStock(RICE,g,{n:'合',g:150});save();renderStock()});done();return}
   if(STORE_RE.test(raw)){const it={name:P.name,prod:true};if(convApply(it)){const k=P.v||1;
-    undoable(`${it.name}を${k}個入れました（${it.name.startsWith(DELI)?'食品成分表の標準値':'公式サイトの値'}）`,()=>{addStock(it.name,it.g*k,{n:'個',g:it.g,...(it.nw?{nw:1}:{})},it.per,it.g);save();renderStock()});done();return}}
+    done();stockIn(`${it.name}を${k}個入れました（${it.name.startsWith(DELI)?'食品成分表の標準値':'公式サイトの値'}）`,it.name,it.g*k,{n:'個',g:it.g,...(it.nw?{nw:1}:{})},it.per,it.g,'');return}}
   const sea=SEAS.find(([n])=>pnorm(n)===pnorm(P.name)||(STK_SYN[n]||[]).some(w=>pnorm(w)===pnorm(P.name)));
-  if(sea){const g=P.g!=null?P.g:(P.v||1)*sea[1];undoable(`${sea[0]}を在庫に入れました`,()=>{addStock(sea[0],g,{n:sea[2],g:sea[1]});save();renderStock();renderShop()});done();return}
+  const sht=SHELF.flatMap(x=>x[1]).find(t=>pnorm(t[0])===pnorm(P.name)||pnorm(baseN(t[0]))===pnorm(P.name));
+  if(sht||sea){const t=sht||shelfDef(sea[0]),pk=t?t[4][0]:sea[1];done();seasIn(t?t[0]:sea[0],P.g!=null?P.g:(P.v||1)*pk);return}
   const pm=prodSearch(P.name,2);if(pm.length===1||(pm.length&&pnorm(PRODMK[pm[0][0]]+pm[0][1])===pnorm(P.name))){addProd(pm[0]);return}
   const lf=findFood(P.name),fast=lf&&(lf.n===P.name||baseN(lf.n)===P.name||(lf.a||[]).includes(P.name));
   const names=[...FOODS.map(f=>f.n),...Object.keys(ALIAS)].join('、');let r=null;
@@ -2702,7 +2763,7 @@ async function stAddLine(){
   }
   if(!(g>0)){toast('量が読めませんでした。「ブロッコリー 350g」のように入れてね');return}
   g=Math.round(g);const label=name+(form&&!name.includes(form)?`（${form}）`:'');
-  undoable(`${label}を${fmtAmt(name,g,pu)}で入れました（ちがえば「直す」）`,()=>{addStock(name,g,pu,per,use,form);save();renderStock()});done();
+  done();stockIn(`${label}を${fmtAmt(name,g,pu)}で入れました（ちがえば「直す」）`,name,g,pu,per,use,form);
 }
 /* ===== 市販の食材・調味料（メーカー公式） 名前・容量・100gあたりの栄養 ===== */
 const PRODMK=/*PRODMK*/["J-オイルミルズ","Pasco敷島製パン","UHA味覚糖","あづま食品","いなば食品","にんべん","はごろもフーズ","ひかり味噌","みなさまのお墨付き","よつ葉乳業","アサヒグループ食品","アサヒビール","アサヒ飲料","イセ食品","エスビー食品","エバラ食品","オエノン","オタフクソース","カゴメ","カルディ","カルビー","キッコーマン","キユーピー","キリンビバレッジ","キリンビール","コープ","サッポロビール","サトウ食品","サンヨー食品","シマヤ","スマイルライフ","タカノフーズ","ダイショー","ダイドードリンコ","テーブルマーク","ニチレイフーズ","ニッスイ","ニップン","ハウス食品","ハナマルキ","ヒガシマル醤油","ヒゲタ醤油","フジパン","フンドーキン醤油","ブルドックソース","ブルボン","プリマハム","ポッカサッポロ","マイプロテイン","マルコメ","マルサンアイ","マルハニチロ","ミツカン","ヤクルト","ヤマキ","ヤマサ醤油","ユウキ食品","ロッテ","不二家","丸大食品","丸美屋食品","亀田製菓","井村屋","伊藤ハム","伊藤園","創味食品","味の素","味の素冷凍食品","宝酒造","宝酒造_お酒","山崎製パン","日本コカ・コーラ","日本ハム","日本農産工業","日本食品製造","日清オイリオ","日清シスコ","日清製粉ウェルナ","日清食品","明治","昭和産業","東ハト","東洋水産","桃屋","森永乳業","森永製菓","正田醤油","永谷園","江崎グリコ","湖池屋","理研ビタミン","男前豆腐店","相模屋食料","神州一味噌","米久","紀文食品","赤城乳業","雪印メグミルク","omusubi","Bergin Fruits and Nuts Company","アムウェイ","KALDI","Lee Kum Kee","LEE KUM KEE","李錦記","ケージーインターナショナル","円山うおいち","TOP","cook deli GOZEN","ヨークマート","ヤオコー","LIFE","(株)ヤオコー","小田急OX","ライフ","知久屋","セイミヤ","佐藤水産","マルエツ","スーパーナショナル","ミニストップ","Open Food Facts(日本)","和saiの国","オオゼキ","ライフコーポレーション","とりせん","田子重","イオン琉球(株)","マルエツプチ","サミット","サミットオリジナル","西友","ファミリーマート","フードウェイ","東急ストア","(株)東急ストア","文化堂","マックスバリュ","カスミ","多摩たに","マックスバリュ東海","さとうフレッシュバザール舞鶴京田店","フレッシュクリエイター","さかな組","チェスコ株式会社","いなげや","株式会社カスミ","ぎゅーとら","オークワ","クイーンズ","ハナマサ","Hanamasa","タイヨー","JA全農ミートフーズ","ゆめマート","(株)イズミ","イオントップバリュー","イトーヨーカドー","大黒天物産","ゆめタウン","SEIYU","ラ・ムー","ラムー","マツオカ","ドンキホーテ","ビック富士","わたや","Life","マルエツ Maruetsu","株式会社フジ","ジョイス","BIO-RAL","トップ","エネルギースーパーたじま","らいふ","クスリのアオキ","万代","シャポードパイユ","イオン","まいばすけっと","JA高知県","ベイシア","エーブル","伊達コスモス21","三昌物産株式会社","大山町農協","アルティフーズ","ツルヤ","FamilyMart","TopValu","オイシス","宮崎エヌフーズ","ハム工房HISAMATSU","ヨシダ","成城石井","ビーレジェンド","Dan-D pak","Fennec","ピーア軒","海の精","BRAGG","トップバリュー","本田商店","島本","関西スーパーマーケット江坂店","ルピシア","ヤマダストアー","ファミマ","り","マツモト","ファミマル Kitchen","デリシア","ファミマル","バロー","ハローディ","金山亭","セブンイレブン","セブン","SEVEN","ウオロク","もちとし","コストコ","Costco","The Better Table","Kirkland","コストコホールセール","菊園","ジーケイフーズ(株)","ニューデイズ","とんみ","株式会社サンベルクス","公正屋","せんどう","サンシャイン","フレスタ","清月堂","3COINS","フレンドマート","セイコーマート","LAWSON","ローソン","Lawson","ヨークベニマル","国内製造","Japan Meat","ジャパンミート","オリンピック","大阪屋ショップ","しずてつストア","JA","大阪屋","Olympic","トライアル","BipBeans","こはく本舗","oisix","トライアルカンパニー","サニージャパン","ベルク","アルビス株式会社","フレスト","デイリーヤマザキ","オフィチーナ","遊菓堂","阪急オアシス","イズミヤ","阪神オアシス","7-Eleven Taiwan","創菜亭","イオンリテール","イオンフードスタイル","原信ナルス","原信","イオンリテール(株)","株式会社イオンフードスタイル","ダイエー","イオン北海道","オリジン","ダイエーグルメシティ","(株)ダイエー","グルメシティ","HIヒロセ","三和","近商ストア","ユーラス","President","やまもとや","Pocari Sweat","小森商店","アジカル株式会社","アジカル","エスビー","DHC","Lotte","サンフーズ","Chiara","株式会社ヒサシ水産","とんたろう","株式会社済吉商店","中央冷蔵株式会社","ミホウジャパン","株式会社マルキン","ワンダ","Asahi","ウィルキンソン","アサヒ飲料(株)","アサヒ","三ツ矢爽","道長","寺田本家","株式会社キャメル珈琲","虎彦","朝日商事株式会社","株式会社ふくや","ふくや","TRIAL×こはく本舗","スズキ食堂","華桔梗","ニチノウ飛田","ドーリームズファーム","富士甚醤油株式会社","丸菱ホールディングス","Suntory Green Da・ka・ra","KIRIN","辻野","す","フードニア株式会社","ワールドフーズ株式会社","長命堂","大地を守る会","くらし良好","香月堂フーヅ有限会社","フジチク","彩雲堂","蜂の家","大澤屋","サガミヤ","和郷","株式会社アイランド食品","長沼あいす","茅乃舎","株式会社相生","加悦ファーマーズライス","輝美カレールー(中辛)","石川菓子店","柿の葉寿司","かつや","株式会社さわらび","上野屋","GODIVA","GODIVA※セブンイレブン","ゴディバジャパン","Hakkaisan","なよろ菓子工房ブラジル","株式会社 長崎雲仙ハム","生一麺","トップバリュ","野田飴老舗","ゴールドジム","玉谷製麺所","まつばや","タマチャンショップ","コウヤマ","Royal Pak Lopia","崎陽軒","アグリエイト","インターフレッシュ","(株)舟和本店","吉野家","amobio","株式会社バロー","アシバル","株式会社アシストバルール","S SELECT","西海醤油","Torigen","信濃屋","株式会社奄美自然食本舗","もめん弥","ピュアブースとうや","タイランドフィッシャリージャパン","無印","無印良品","ナビスコ","MUJI","モンベル","杉田エース","Best price","ベストプライス","Best Price","トップバリュベストプラス","イオン株式会社","TOPVALU","Topvalu","イオン ベストプライス","イオン(株)","Top value","イオン トップバリュ","BESTPRICE by TOPVALU","グリーンアイ","Tohato","Marukome","真秀コールドフーズ","エスイー株式会社","山崎パン","Bestprice","輸入者:(株)パン•パシフィック•インターナショナル•トレーディング","マルトモ","ベイシアプレミアム","Muji","MUJI 無印良品","muji","ドン・キホーテ","Gyomu","ベストデリカ","ニシキヤキッチン","にしきや","にしき食品","アクシアルレーベル株式会社","おおやま夢工房","Koubo","イーストナイン","沢田漬物","ジンダ","西洋菓子クラブ","Hula’s","福山黒酢","三州三河屋","BIOKURA","ネクストレード株式会社","琉球フロント","株式会社 水鮮","銀扇","おとこまえ","RedBull","中登屋","株式会社世田谷自然食品","梅月堂","(株)ゼンショーホールディングス","有限会社ウィポップ","グーテックス","髙村武志牧場","宮島醤油","フライングガーデン","マルソウ","ロピア","えん コミュニケーションズ","だいずDAYS","Antique","株式会社オサベフーズ","社会福祉法人亀岡福祉会第三かめおか作業所","梅の花","勅使川原精麦所","有限会社 ふくみや","中部流通株式会社","小江戸楽久雄","青木屋","富士アクア","アド・グッズ","稚加榮","源清田商事","マルシンフーズ","ジェイ・ファーム","落雁 諸江屋","あんだぎー家大城","三國清三監修","Cheeno!","トヨタエンタプライズ","(株)Real Style(リアルスタイル)","デイリーマーム","丸亀","株式会社ノースカラーズ","ケイ・エスカンパニィー","iSDG","ボストン","川口屋","Iris Foods","アイリスオーヤマ","Amazon","540","ファットリアビオ","アヲハタ","KOKO","畑製菓","久原本家食品","扇屋","SL Creations","Muscle Deli","なかで","販売者/(株)Real Style","(株)Real Style","Real Style","beLEGEND","コンペイト","バルクスポーツ","三協食品工業","HALEO","アコメヤ","バンダイ","株式会社プライムダイレクト","カバヤ食品株式会社","DELIPICKS","エフアンドエフシステム","塩芳軒","アグレックス","ノルレェイク","ウィズメタックフーズ","アンシンク株式会社","アルプロン","AIZU","マルヰ醤油株式会社","Pure Honey","(株)ユーラス ロピア","かるなぁ","株式会社河道屋","リンガーハット","大同","Chefs Recipe Trademark","池田屋","グリシーヌ","CHEFLLY","本家菊屋","ハッピーポケット","健祥","みれい果","エクスプロージョン","エクスプローション","X-PLOSION","オフィスおかん","魚政","AMBIQUE","株式会社こむぎ屋","株式会社割烹百珍","カゴメアグリフレッシュ株式会社","ODD FUTURE","スリーランドシーフーズ","グリーンスプーン","すかいらーくホールディングス","フードニア","みたけ食品","A PROP","株式会社丸越醸造","イノベンション","マツバラ","(株)沖縄マツバラ","マルユウ","倉敷おからクッキー","GronG","販売者:(株)Ultimate Life","須崎屋","クラブハリエ","株式会社クラブハリエ","株式会社フラットクラフト","埼玉物産株式会社","ストロングハート","薄墨羊羹","wout","株式会社シルバーライフ","株式会社開運堂","開運堂","タコとハイボール","大一シーフーズ","販売者:(株)ZENB BREAD","ZENB","販売者:(株)ZENB JAPAN","ゼンブ","ZENB JAPAN","zenb Japan","(株)ZENB JAPAN","販売者:ZENB JAPAN","蔵王米菓(株)","snaq.me","株式会社シング","SAVE","円相フードサービス","有限会社ディープライス","D-Price","D-PRICE","ディープラス","ShoEi","DNS","鎌倉ハム","BAKE","干し芋","stone rolls","SAKURAJOSUI KITCHEN","崔さんのお店","みやうち","さぬき麺心","燻製BALPAL","黒糖加工","北菓楼","志津屋","株式会社羽前屋","松屋フーズ","ヤッサ饅頭本舗","桂利久","北川村ゆず王国株式会社","Simplot","日向屋","(株)いととめ","協同インターナショナル","株式会社レヴクリエイト","マルスイ","古川食品","セブンイレブン プレミアム","AKOMEYA","モントワール","オーベルジーヌ","たんや 善治郎","海心","味蔵","池川茶園","有限会社坂根屋","菓心まとはら","SweetBox","富冷","Fitdish","コメダ珈琲店","百姓工房","ピュアサラダ マックスバリュー","魚づ鱒寿司店","Japan Muslim Access","弐ノ弐","やぎとそば太陽","株式会社翔屋","肉の匠 中むら屋","VALX","フードコネクション","大黒屋","京月","マッスル海鮮丼","カンショク株式会社","源吉兆庵","株式会社山口油屋福太郎","大東園","ハルクファクター","Seven & i Premium","株式会社テンダーボックス","やぶ屋","三協商事株式会社","デリカ食品","フルッタフルッタ","サニー食品","株式会社フーズアイ","福音堂","九州児湯フーズ","秀幸","まごころ農場","瀬戸内讃岐工房株式会社","ピュア","ヤマエ食品","日乃本米菓製造","ほろかない","株式会社ほろかない","製造者/能勢酒造(株)","JA和歌山","多田製菓","宇都宮みんみん","みんみん","マルサフルーツ古屋農園","ヤマト福山商店","卯月製麺","ザプロ","THE PROTEIN","瀬戸内IRICOデザイン","クックワン","tabibitoキッチン","株式会社ケルン","Shonan Soy Studio","いちごハウスきみしま","(株)スナックミー","TANPAC","(株)メリーゴーランド","株式会社メリーゴーランド","オーガーメイド","株式会社芋国屋","源 吉兆庵","宗家 源 吉兆庵","ユナイテッドスーパーマーケット","つるとんたん","横井チョコレート","スープストック","株式会社さんべ開発","大地のめぐみ","マイナット","ハイファイフーズ","宅麺","Base Food Inc.","ベースフード","ベースフード(株)","株式会社五和","有限会社ウチノ","チカラ印","ナルミ総合企画","カルネボーナ","パルライン","カネスエ","Pokka Coffee","前田家","丸善","トラピス","結わえる","大分からあげ","シェルティ","木能実","ゲンキー","株式会社 やまと蜂蜜","株式会社ミヤカン","ゲンキー株式会社","株式会社ティーエムビー","快善プロジェクト","トーアス株式会社","トーシン","ネイチャーカン","北海道食品","食の力コーポレーション","中村屋","エクスクァティア","清新通産株式会社","ヤママル富士","堀口園","ジェニーズクッキー","かなわ海産","エゾボリック","EZOBOLIC","ヘルシーフードラボ U-BASE","ナチュラルモード","YAOKI","カヤックゼロ","吉田パン","もへじ","稲作ほしの","EZOBOLICプロテイン","NATURECAN","REYS","テーブルストック","大平商店","腰塚","TORIZEN株式会社","株式会社みわ","サン・フード","OKINI菓子工房","比沙家","ベリフィスト","統一","Fresh delight","MARS","利全食品有限公司","業務スーパー","7-11","7 select","灣仔碼頭","山福製菓(有)","株式会社ハタダ","クリエイト","ビッグハウス","MiniStop","Ajinomoto Knorr","Knorr","Ajinomoto","あじのもと","AJINOMOTO","クノール","CookDo","セブンプレミアム","S&B","エスビー商品","S & B","エスアンドビー","石井食品","江崎グリコ株式会社","グリコ","Glico","YORK DELI","イチビキ","アピタ","mcc","エム・シーシー食品株式会社","MCC食品","アダチ製菓","マルサン","岩塚製菓","イトウ製菓","イケダヤ製菓株式会社","榮太郎総本舗","Acecook","コスモス薬品","エースコック","スーパーカップ1.5倍","越後製菓","えちごせいか","Itoen","横濱舶来亭","Solleone","エバラ","AGF","AGF Blendy stick","カフェラトリー","ブレンディ® カフェラトリー®","oikos","Kellogg's","ケロッグ","Kellogg’s","コプロ(株)","いなば","旭松食品株式会社","株式会社大阪前田製菓","マルヤナギ","大塚食品","Takanofoods","AKAGI","岩崎食品","青木食品","旭フレッシュ株式会社","ごちそうはなし","ファミリマート","オークワマルシェ","伊藤製パン","すが野","株式会社 葵食品","葵食品","稲葉ピーナッツ株式会社","7 Eleven","日の出","カネテツ","金城","共立食品","共立食品株式会社","KYORITU","春日井","カネカ食品","Calbee","カルビーby OK","サワークリームオニオン ポテトチップス","カルビー株式会社","カルビー(株)","湖池屋株式会社","栗山米菓","株式会社 栗山米菓","新々堂","アサヒ飲料株式会社","カンロ","SEVEN&i","Bourbon","(株)ブルボン","Foodlier","株式会社フードリエ","KEY COFFEE","カタギ","リフレカップ株式会社","協同乳業株式会社","メイトー","Skile Life","Kanpy premium","グリーンウッドファクトリー","プロッシモ カットトマト250g","加藤産業株式会社","加藤産業","むぎの詩","なべやき屋 キンレイ","カジノヤ","カワゴエヤ","かどや","神尾食品工業","エバグリ","うさぎもち","菊水","ケンミン食品","玉三","マンジョウ","Kikoman","ゆめいち","九州乳業株式会社","TableMark","Table mark","くらしモア","紀文","ブランドシェア","Seven & I","ピアゴ","カバヤ食品","クラシエ","Chupa Chups","Kracie","コーシン","キューピー","(株)こじま","株式会社ユーラス ロピア","株式会社ユーラス","ギンビス","株式会社ギンビス","ギンピス","缶つま","K&K","国分グループ","サンヨー堂","新庄みそ","製造者:坂 栄養食品(株)","NISSIN","Nissin","日清シスコ株式会社","伊藤製菓","三菱食品","三菱食品株式会社","生活意向","三幸製菓","雪の宿","株式会社三真","カネミ商店","澁谷食品株式会社","渋谷食品株式会社","蔵王米菓株式会社","千秋堂","真誠","ソントン食品(株)","スガキヤ","寿がきや食品株式会社","ミヤカン","清水食品","五木食品","五木","サッポロ一番","スギヨ","シャトレーゼ","株式会社シャトレーゼ","サンポー","Suntory","サントリー(株)","サントリーフーズ(株)","サントリーフーズ","販売者/サントリーフーズ(株)","SUNTORY","Craft Boss","スタバ","酒悦","シマダヤ","島乃香","パイオニアフーズ","pasco 敷島製パン","パスコ","三立製菓","三立製菓株式会社","アンディコ","スターゼン株式会社","信州ハム","Shopper's Price","CGC","Lucky Supermarket","Shoppers’ Price","山栄食品工業","正田","Maruha Nichiro","Umios","Unions株式会社","Umios 株式会社","戸田屋","東鳩","大一製菓","滝沢ハム","タキザワハム","くらし良好 マルちゃん","マルちゃん","天恵製菓","PICKLES","お徳用","マルキン","竹下製菓","株式会社カネタツーワン","トモヱ乳業","製造者/トモエ乳業(株)","トモエ乳業","ちょうした","タカナシ","タカナシ乳業","テーオー食品株式会社","宝製菓","コカ•コーラ カスタマーマーケティング(株)","Aquarius","コカ・コーラ","Georgia Coffee","コカコーラ","The CocaCola Company","販売者/コカ•コーラ カスタマーマーケティング(株)","ニビシ醤油","日清","mizkan","Mizkan","味道楽","株式会社永坂更科布屋太兵衛","日清製粉","マ・マー","青の洞窟","日清製粉 Welna","日清ウェルナ","ママー","日清製粉ウェルナ マ・マー","マ.マー","Nipponham","日本ハム株式会社","中野製菓","ISETAN MITSUKOSHI THE FOOD","イオン トップバリュー","Nobel","札幌クープ","ニチレイ","キューレイ","ジェフダ","nissui","Nissui","株式会社ニッスイ","日本精麦","浪花屋","なとり","umios","ウミオス","Maruha Nichiro Ocean Blue","Nippn","オーマイ","株式会社ニップン","東海漬物","Sangaria","サンガリア","(株)日本サンガリア","株式会社なとり","ピリ辛醤油味 焼きするめ","株式会社函館なとり","めいらく","スジャータめいらく","Nestlé KitKat","Nestle Kit Kat","Nestle","ネスレ日本株式会社","NESCAFE","ネスレ","Nestlé","Lipton","デルモンテ Del Monte","デルモンテ","米屋株式会社","Co-oo","デリシャスフーズ","日本生活協同組合連合会","co op","Co-op","co-op","COOP","coop","CO-OP","Co-Op","グリーンコープ","日東食品","NISSHIN oillio","日東ベスト株式会社","House","ハウス","林兼産業","HOKO","宝幸","株式会社 宝幸","株式会社宝幸","エスセレクト","ロルフ","hoko","FritoLay","Seven&i","おやつセレクト","フリトレー","Doritos","ひざつき","ひざつき製菓","ぼんち株式会社","みんなのおやつ","ON365","Pokja Sapporo","Pokka Sapporo","平和堂","ミツヤ","フルタ製菓","ベル食品株式会社","ホテイフーズ コーポレーション","フジミツ株式会社","ハインツ日本株式会社","株式会社 フジサワ","福岡産業","福泉産業株式会社","細川製餡","ロイヤルコントラクトサービス株式会社","Bull-Dog","FUJICCO","フジッコ(株)","フジッコ","FUJIYA","フジヤ","Hagaroma","シャキッと!","カーボフ","フタバ食品株式会社","フタバ","フタバ食品","スモークローフ","7-Premium","ドラッグストア コスモス","販売者:プリマハム(株)","ハンプリマハム","星野物産","八洋食品","八洋食品株式会社","プロ使用","ロコボ","太陽松","ホクチン","ふじや食品","ハチ食品","藤清","明治屋","マルタイ","meiji","Meiji","SAVAS","Meiji (明治)","ザバスプロテイン","meiji SAVAS","製造者/(株)明治","丸大食品(株)","(株)ファミリーマート&丸大食品(株)","マックスバリュー","Morinaga","Mt.Rainier","Kraft","森永乳業(株)","MYPROTEIN","morinaga","森永","販売者/森永乳業(株)","森永乳業株式会社","マルシン","三河屋","三河屋製菓","マンナンライフ","松山製菓","味覚糖","モンテール","Monteur","名糖産業","三島食品","松永製菓株式会社","おやつカンパニー","7イレブン おつまみスナック","(株)おやつカンパニー","果汁グミ","(株)明治","株式会社明治","アリックス株式会社","(株)丸善","製造者:(株)丸善","メイホウ食品","ゆめイチ","丸美屋","日東紅茶","くらしのベルク","山内製菓","山三商会","Momoya","明星食品","明星食品株式会社","明星","丸善食品工業","MORINAGA","森永製菓(株)","森永アイス","森永エンゼルデザート株式会社","たん熊北店","マルキン食品株式会社","水野製菓","丸三玉木屋","デーリィ牛乳","日清ヨーク株式会社","日清ヨーク","やおきん","山崎ビスケット株式会社","YBC","ヤマザキビスケット","ヤマザキビスケット(株)","ユウキ","マコーミック","有楽製菓","ユーラク","製造者:米屋(株)","Yochan foods","よっちゃん食品工業(株)","阿川食品工業株式会社","・ヤマキ","Yakult","ヤマモリ","ヤマザキ","くすりの福太郎","Family Mart","やまざき","Yamazaki","山崎","コスモス","やまう","ヤマヒデ","武蔵野フーズ","米久デリカフーズ","株式会社 吉村甘露堂","吉村甘露堂","リケン","リケンのノンオイル","QBB","Fleur","ロイヤル","Riska","(株)ロッテ","LOTTE","Premium Ghana","ルナ物産","ライフフーズ","龍為製菓","半兵衛麩","ミズホ食品","渡由製菓","7-Eleven Premium","ミルク","4902165167887","ライオン菓子","ライオン","ウェルネオシュガー","ウェルネオシュガー株式会社","南国製菓","新宿中村屋","西山製麺","株式会社サラダコスモ","成田食品","野中蒲鉾株式会社","なかたか","株式会社友口","友口","7-Eleven","富澤商店","株式会社ダイショー","寺沢製菓","ノースイ","マルホン","竹本油脂(株)","大徳食品","minori plus","タカキベーカリー","タカギベーカリー","徳島製粉","揚立屋","竹島茂","谷尾食糧工業株式会社","ダイドー","ダイドードリンコ(株)","徳島産業株式会社","ディーンデルーカ","株式会社愛媛海産","AKOMEYA TOKYO","新野屋","株式会社銀座コージーコーナー","サン食品","ぼんご","株式会社オヤマ","大磯","えがわ","有限会社おぐり","京吉","アサヒコ","デルソーレ","タマヤパン","パパイヤソース","高原通商店","ドレンミー","町村農場","ミツハシライス","京とうふ藤野","水牛印","信田缶詰株式会社","雪印メグみるく","セブン-イレブン","全国農協食品株式会社","全国農協食品","よつ葉","毎日","日本酪農協同株式会社","木村ミルクプラント","全国酪農協同組合会","全酪連","全酪","ホクレン農業","ホクレン農業協同組合連合会","JAふらの","JAアオレン","JA全農いばらき","榛名酪農業協同組合連合会","Haruna Dairy","ゆのたに","静岡経済連","大山内","四日市酪農","JA全農ラドファ","White Rose","そな風","やまぐち県酪乳業株式会社","馬路村農業共同組合","JAえひめ","JAフーズさが","鹿児島県経済農業協同組合連合会","かねます","Kirin","Tropicana","Kirin Beverage","キリンビバレッジ(株)","キリン","ゆきほまれ","黄大阪","高麗食品","黄さんのキムチ","高麗食品平野工場","デイリー•プロダクツ•ソリューション(株)","小岩井乳業","つかもと","株式会社鈴福食品","雪印","とようけ屋山本","Kikkoman","紅谷","マルショウ","ペストリースパイスミックス","こだわりミルク","小袖屋","ファディ","マルキヨ","(株)西脇水産輪島工場","西酒造","木村海産","株式会社千葉産直サービス","福井缶詰","ショウナン","MIYAKO","株式会社ヤオコー","Star Select","株式会社 糸島みるく ぷらんと","糸島みるくぷらんと","(株)ヤミー・フードラボ","四代目弥平(保存温度変更者イオンフードサプライ)","オイシックス・ラ・大地","バンビジェ","グリンリーフ","株式会社狩野ジャパン","小畑商店","パルシステム","パルシステム生活協同組合連合会","第一商事","アンデルセン","Oscar Mondo","株式会社あおきフード","アクト中食","バリラ","トリゼンフーズ株式会社","株式会社 木の屋","木の屋石巻水産","Japanese brand corn snack","ファインド・ニュース","氏原製菓株式会社","株式会社神戸物産","神戸物産","Star of Spice","業務用スーパー","株式会社 神戸物産","Ostern Foods","Toyota豊田乳業","(株)神戸物産","リオ","グリーンポートリー","サンヨー食品株式会社","株式会社アントレ","(有)ニ幸食鳥","柿安","ヨックモック","にしき堂","ローリー","花山温泉","ボストンベイク","L","株式会社コスモス食品","デルタ","旬楽膳","南光物産","Bocca","全農グループ","味源","有限会社味源","肉のジャパンミート","マルケー食品","ポパイ","和楽庵","サンリクフーズ","南州農場株式会社","南州牧場株式会社","六甲山牧場","Vマーク","八社会","グローバルチーズ株式会社","バリュープラス","マエダ食品サガ","興和物産","ナンチク","倉敷味工房","カネヨ商店","野田製菓","平野豆腐製造所","いばらく乳業株式会社","株式会社坂崎製麺","株式会社正栄","自然派応援倶楽部","移動食品","伊藤食品株式会社","伊藤食品","濱辰","もぎ豆腐店株式会社","ひだ銘販","宮内ハム","成城石井セントラルキッチン","大阪王将","サンクゼール","久世福商店","遠藤製餡","まるた屋","天生水産","亀じるし","ヤスダヨーグルト","紅貴庵","テング","元祖たこ昌","北海道日高乳業","三代目茂蔵","めん楽","藤本食品","藤本食品株式会社","丸正フーズ","ローゼン","Manneken","富山の蒲鉾メーカー","黒糖本舗垣乃花","垣乃花","おが和","岩のり工房","泉栄堂","エスアールジャパン","ジェフダベーシック","御福餅本家","株式会社 藤田チェリー豆総本店","藤田チェリー豆総本店","秋川","(株)秋川牧園","株式会社ニューオークボ","マルアイ","井筒","アイジーエム","日々、だし生活","鎌田醤油","紀伊國屋","紀ノ国屋","丸浜食品株式会社","パールライス","マスコット","背黒いわし唐揚","ヤクルトヘルスフーズ株式会社","宮城製粉","宮城製粉会社","Mix Cheese Red","エヌシーエル","タバスコ","富士シティオ","あさひ","海洋食品","みやこや","株式会社みやこ商店","アマタケ","Assoda","有限会社くり原","さかもと","富士物産株式会社","よしや","阪神製菓","仲宗根食品","オキハム","マリンフード","マリンフード株式会社","namisato","寺岡有機醸造","(株)友栁飲料佐賀県","上野珍味","和歌山産業","ピエトロ","めん食","日本ジフィー","佐々木進商店","マルイ","中沢製麺","荒井食品","桃宝食品","モモや","コスモ食品","ミツトヨフーズ","北都","スミフル","プレコデリカ","金秀商事","有限会社ドリームズファーム","ヨネザワ製菓","Banjo","マルヒロ","生活クラブ","株式会社エヌエス","エヌエス","(株)久原醤油","久原","大師屋製菓","加藤敬太郎翔","nissin","OHAYO","一正蒲鉾株式会社","一正","オタフクソース株式会社","株式会社イシカワ","ウェルシア","尾張製粉株式会社","ニッキーフーズ","株式会社ニッキーフーズ","まるや八丁味噌","江戸屋","岩手阿部製粉株式会社","ikari","いかりスーパーマーケット","オニックス","旭食品","岡本製麺株式会社","あわしま堂","(株)岩田コーポレーション","小田急食品","大橋珍味堂","ユーハ株式会社","池島フーズ株式会社","いとふ","扇屋食品","鳥寛","株式会社 明日香","アルファー食品","Wellbeans","大光","石見食品株式会社","石橋","明日香食品","株式会社日本コムサ(ミニストップ)","アサヒグループ","いした","井上食品","リッチーズ","井上食品株式会社","株式会社マリン大王","関西スーパー","クローバー食品","販売者/江崎グリコ(株)","Ezaki Glico","Gaban","株式会社やまとフーズ","Luna","伍魚福","角屋米穀","関越物産","ワンエッ","株式会社金沢製菓","サン","ギノーみそ","鹿児島共同食品(株)","鹿児島協同食品","バローセレクト","小岩井","味の菊一","菊池食品工業株式会社","kentai","キョクヨー","Sardines","株式会社 極洋","極洋","双日食糧水産","株式会社極洋","河村屋","小林商事","ケンシヨー","金鶴食品","株式会社カネカシーフーズ","カネカシーフーズ","九鬼産業","Kuro Goma Latte • 九鬼産業","(農)二ッ堀農園","川崎飲料","前田商店あさひや","九面屋","麺匠からきだ","福井銘菓","株式会社久保田麺業","河内屋","大和屋珈琲","真田","Seika","イニシオフーズ","沢製麺","しきしま","サンラヴィアン","サヌキ食品","東北絆麦","サトウ食品株式会社","鈴市商店","スギ製菓","株式会社 西友","西友みなさまのお墨付き","シノブフーズ株式会社","Oisix","株式会社全珍","三幸","凍り豆腐","佐藤修","スズラン製菓","シノブフーズ","群馬県健康づくり財団","相撲屋","相模屋食料株式会社","相模屋","さぬき麺業株式会社","丸恭商店","トリオ食品","プライフーズ","OK","チアーズ","健康豆元","東京おまめ","たかとう","かねふく","高谷製麺","高善商店","霞ヶ浦加工","黒","ダイカツ水産会社","中外フーズ","加工者/龍屋物産(株)","野村煎豆加工店","日本食品株式会社","株式会社シルビア","かねいわ商店","武蔵製菓","株式会社 マルヤ","みろく屋","平和製菓 株式会社","針谷乳業株式会社","兵庫県手延素麺協同組合","Satouka","ファイン","北海道乳業","北海道乳業株式会社","蓬莱本館","博多あご落とし/八洋食品","平井屋","株式会社コンペイトウ","フクロイ乳業株式会社","フジワンタン","有限会社別所製菓","Häagen-Dazs","ハーゲンダッツ","佐嘉平川屋","備後漬物株式会社","フジタ","藤田食品","古越製麺所","伏見屋","(株)ハート","ホソヤコーポレーション","むつみ","MD","マルマン","株式会社丸美","名城食品","ヨシケイ","株式会社マルハチ","みやけ食品","丸玉水産株式会社","信州青木","株式会社マルツネ","Aコープ九州","pokka sapporo","株式会社サロンドロワイヤル","松原食品","松原食品株式会社","株式会社丸味食品","町田食品","村田蒲鉾店","マルエス","ムソー","丹沢大山五右衛門","丸和油脂","みうら食品","札幌バルナフーズ","山本食品工業","Yamamoto Shokuin","谷貝食品","壮関","ヤマモト食品","渡辺製麺","ヨシヤフーズ","(株)谷貝食品","やまみ","安本","ヨコミゾ","依光蒲鉾老舗","by amazon","日欧商事株式会社","リッチバーガー","五月瀬","辻利","株式会社 石村萬盛堂","丸大水産株式会社","マイバス","一保堂茶舗","ふく福","萌木の村","コスモフーズ","土井製菓","株式会社丸久物産","タカチホ","盛岡スイーツ","雪印北海道","肉のハナマサ","HANAMASA","田中屋","株式会社長坂養鶏場","日本ウインナー株式会社","高木食品工業","えびせんべいの里","たこせんべいの里","三水フーズ","マルイチ商店","気仙沼ほてい","三陸","青源味噌株式会社","nakato","アクシーズ","双日","Seven&I Premium","野菜を食べよう」","BIORAL","Oronamin","大塚","大塚製薬","EAファーム","鏡水産","善幸","ちぐさや","かどや食品","岡山宝株式会社","ホクショウ","世起","中浦食品","近江農産","イオンフードサプライ株式会社","大近","御菓子御殿","名水美人ファクトリー","さえき","阪急デリカ","阪神デリカ","ピュアナチュール","羽二重餅の古里 マエダセイカ株式会社","湯田","ハローズセレクション","ハローズ","かねは","高千穂牧場","株式会社小嶋屋","ココアパウダースタンダード","あかふさ食品","あかふさ","Huel","富永貿易","ニュートリミクスル","Belgian Harvest","居村屋","(株)エスエルジャパン","エスエルジャパン","恒顺","海天","葱伴侣","康比特","好侍","禾茵","金盛貿易","汲赏","农香森","东方甄选","Magic Cook","Öarmilk 吾岛","臨海日本株式会社","イケア・フード","FELIX","ダ・マシノ","リンツ","株式会社オーバーシーズ","オーバーシーズ","Donna Chiara","Nutkao","東京ヨーロッパ貿易","Mancini","野澤組","イル・モディカーノ","スカーリア","農心ジャパン","Nongshim","NONGSHIM","daesang","韓国","CJ FOOD","VIVLIV","タイのスーパー","海底労","ブルーノスティック","CIVGIS","タイ🇹🇭のスーパー","プリマテイスト","Pringles","日本ケロッグ","プリングルス","輸入者:日本ケロッグ合同会社","banh trang","キャンベル","アラタキ","ジャックリンクス","beryl's","LUBOV CAFE"]/*/PRODMK*/;
@@ -2734,7 +2795,7 @@ function addProd(r,z){
   /* 1個あたりの値しか無い商品は、1個＝100として数える（栄養は1個分がそのまま入る） */
   const cnt=U?(+((zen(sz).match(/(\d+)\s*(個|本|袋|枚|食|パック|切れ|缶|カップ|包|粒|錠|スティック)/)||[])[1])||1):0, g=U?cnt*100:(sizeG(sz)||100), un=U||sizeUnit(sz,r[1]);
   const per=r[3]>=0?{k:r[3],p:Math.max(0,r[4]),f:Math.max(0,r[5]),c:Math.max(0,r[6]),fi:Math.max(0,r[7]),s:Math.max(0,r[8])}:null, gen=genOf(name);
-  undoable(`${name}${sz?`（${sz}）`:''}を在庫に入れました`,()=>{addStock(name,g,{n:un,g:U?100:g},per,0,'');const s=S.stock.find(x=>x.name===name);if(s&&gen)s.gen=gen;save();renderStock();if(typeof renderShop==='function')renderShop()});
+  stockIn(`${name}${sz?`（${sz}）`:''}を在庫に入れました`,name,g,{n:un,g:U?100:g},per,0,'',gen?{gen}:null);
   $('#stText').value='';$('#stSug').hidden=true;
 }
 function renderSug(){
@@ -2795,7 +2856,7 @@ let WLAST=[];
 function addWorld(r){
   const name=(r[2]&&!r[3].toLowerCase().includes(r[2].toLowerCase())?r[2]+' ':'')+r[3], sz=r[4]||'', g=sizeG(sz)||100, un=sizeUnit(sz,r[3]);
   const per={k:r[5],p:Math.max(0,r[6]),f:Math.max(0,r[7]),c:Math.max(0,r[8]),fi:Math.max(0,r[9]),s:Math.max(0,r[10])};
-  undoable(`${name}${sz?`（${sz}）`:''}を在庫に入れました`,()=>{addStock(name,g,{n:un,g},per,0,'');save();renderStock();renderShop()});
+  stockIn(`${name}${sz?`（${sz}）`:''}を在庫に入れました`,name,g,{n:un,g},per,0,'');
   $('#stText').value='';$('#stSug').hidden=true;
 }
 /* 数の上限：g・mlは99999、個・本などは999 */
@@ -2804,12 +2865,14 @@ function stPrev(){const v=$('#stG').value,el=$('#stPrev'),un=$('#stUnit'),o=un.o
   const big=!(+v>0)||+v>stMax(un.value);el.hidden=false;el.style.color=big?'var(--bad)':'var(--ink)';el.textContent=big?`数が大きすぎます（${stMax(un.value)}まで）`:`入れる量：${+v} ${o?o.textContent.replace(/（.*$/,''):''}`}
 let stEdit=null;
 const stU=s=>s.pu&&s.pu.g>0?[s.pu.n,s.pu.g]:unitOf(s.name)||['g',1];
+function stRow(s,noAmt){const U=stU(s),cnt=s.g/U[1];if(noAmt)return `<div class="st"><div style="min-width:0"><b>${esc(s.name)}</b><div class="small muted">ある</div></div><div class="acts"><button class="btn sm" type="button" data-stdel="${s.id}" style="color:var(--bad)">消す</button></div></div>`;return `<div class="st"><div style="min-width:0"><b>${esc(s.name)}${s.form&&!s.name.includes(s.form)?`<span class="small muted">（${esc(s.form)}）</span>`:''}</b><div class="small muted num" style="overflow-wrap:anywhere">${fmtAmt(s.name,s.g,s.pu)}</div></div>
+   <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button>${isSeasItem(s)?'':`<button class="btn sm" type="button" data-use="${s.id}">今日使う</button>`}<button class="btn sm" type="button" data-stedit="${s.id}">直す</button><button class="btn sm" type="button" data-stdel="${s.id}" style="color:var(--bad)">消す</button></div>
+   ${stEdit===s.id?`<div class="row" style="grid-column:1/-1;gap:6px;flex-wrap:nowrap"><span class="small" style="flex:none">今ある量</span><input type="number" inputmode="decimal" min="0" max="${stMax(U[0])}" step="any" id="stEditV" value="${cnt>stMax(U[0])||!isFinite(cnt)?'':r1(cnt)}" placeholder="数" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:7px 10px;font-size:18px;font-weight:700;text-align:center"><span style="flex:none">${esc(U[0])}</span><button class="btn sm pri" type="button" data-stsave="${s.id}">決定</button></div>`:''}</div>`}
 function renderStock(){
-  const L=$('#stockList');
-  if(!S.stock.length){L.innerHTML='<p class="small muted">まだ何もありません。レシートを撮るか、下から追加してください。</p>';return}
-  L.innerHTML=S.stock.map(s=>{const U=stU(s),cnt=s.g/U[1];return `<div class="st"><div style="min-width:0"><b>${esc(s.name)}${s.form&&!s.name.includes(s.form)?`<span class="small muted">（${esc(s.form)}）</span>`:''}</b><div class="small muted num" style="overflow-wrap:anywhere">${fmtAmt(s.name,s.g,s.pu)}</div></div>
-   <div class="acts"><button class="step" type="button" data-dec="${s.id}" aria-label="${esc(s.name)}を1つへらす">−</button><button class="btn sm" type="button" data-use="${s.id}">今日使う</button><button class="btn sm" type="button" data-stedit="${s.id}">直す</button><button class="btn sm" type="button" data-stdel="${s.id}" style="color:var(--bad)">消す</button></div>
-   ${stEdit===s.id?`<div class="row" style="grid-column:1/-1;gap:6px;flex-wrap:nowrap"><span class="small" style="flex:none">今ある量</span><input type="number" inputmode="decimal" min="0" max="${stMax(U[0])}" step="any" id="stEditV" value="${cnt>stMax(U[0])||!isFinite(cnt)?'':r1(cnt)}" placeholder="数" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:7px 10px;font-size:18px;font-weight:700;text-align:center"><span style="flex:none">${esc(U[0])}</span><button class="btn sm pri" type="button" data-stsave="${s.id}">決定</button></div>`:''}</div>`}).join('')+`<div class="row" style="justify-content:flex-end;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sm" type="button" data-stclear="1" style="color:var(--bad)">冷蔵庫を全部空にする</button></div>`;
+  shelfMigrate();renderShelf();
+  const L=$('#stockList'),F=S.stock.filter(s=>!isSeasItem(s));
+  if(!F.length){L.innerHTML='<p class="small muted">まだ何もありません。レシートを撮るか、下から追加してください（調味料は上の「調味料の棚」に入ります）。</p>';return}
+  L.innerHTML=F.map(s=>stRow(s)).join('')+`<div class="row" style="justify-content:flex-end;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sm" type="button" data-stclear="1" style="color:var(--bad)">冷蔵庫を全部空にする</button></div>`;
 }
 function addStock(name,g,pu,per,use,form){
   const f=per?null:findFood(name); const n=f?f.n:name;
@@ -2828,10 +2891,81 @@ let rTag=null, AIREC=[];
 /* 在庫に「ある」かの当て方：名前が同じ・（）を外して同じ・成分表で同じ・よくある言いかえ */
 var STK_SYN={'ごはん':['お米（精白米）','米','パックごはん','ごはん','玄米ごはん','無洗米'],'鮭':['塩ざけ','さけ','サーモン','生鮭'],'さば':['さば缶（水煮）','塩さば'],'卵':['たまご','玉子'],'豆腐（木綿）':['豆腐','木綿豆腐','絹豆腐','豆腐（絹）','絹ごし豆腐'],'ねぎ':['長ねぎ','青ねぎ','小ねぎ','万能ねぎ','白ねぎ'],'みそ汁':['みそ','味噌'],'みそ':['味噌'],'わかめ（水もどし）':['わかめ','乾燥わかめ','カットわかめ'],'ヨーグルト（無糖）':['ヨーグルト','プレーンヨーグルト'],'ツナ缶（水煮）':['ツナ','ツナ缶'],'しめじ':['ぶなしめじ'],'鶏むね肉（皮なし）':['鶏むね肉','鶏むね','鶏胸肉'],'豚もも（ゆで）':['豚もも','豚もも肉','豚しゃぶ用'],'しょうゆ':['醤油','こいくちしょうゆ','濃口しょうゆ'],'塩':['食塩','あら塩'],'砂糖':['上白糖','きび砂糖'],'酒':['料理酒','清酒'],'サラダ油':['キャノーラ油','なたね油'],'こしょう':['塩こしょう','黒こしょう','コショウ'],'だしの素':['顆粒だし','ほんだし','和風だし']};
 function baseN(s){return String(s).replace(/（.*?）|\(.*?\)/g,'').trim()}
+function stMatch(s,n,f,b,syn){return s.name===n||baseN(s.name)===b||(f&&s.name===f.n)||s.gen===n||s.seas===n||s.typ===n||syn.some(w=>s.name===w||baseN(s.name)===w||s.gen===w)}
 function haveStock(n){if(!S.stock||!S.stock.length)return null;const f=findFood(n),b=baseN(n),syn=STK_SYN[n]||[];
-  return S.stock.find(s=>s.name===n||baseN(s.name)===b||(f&&s.name===f.n)||s.gen===n||syn.some(w=>s.name===w||baseN(s.name)===w||s.gen===w))||null}
+  return S.stock.find(s=>stMatch(s,n,f,b,syn))||null}
+function allStock(n){if(!S.stock||!S.stock.length)return [];const f=findFood(n),b=baseN(n),syn=STK_SYN[n]||[];return S.stock.filter(s=>stMatch(s,n,f,b,syn))}
 var SEAS=[['しょうゆ',500,'本'],['塩',500,'袋'],['砂糖',1000,'袋'],['みそ',750,'パック'],['みりん',500,'本'],['酒',900,'本'],['酢',500,'本'],['サラダ油',600,'本'],['ごま油',200,'本'],['オリーブオイル',400,'本'],['こしょう',20,'本'],['だしの素',50,'袋'],['片栗粉',200,'袋'],['マヨネーズ',350,'本'],['ケチャップ',300,'本'],['ポン酢',360,'本'],['めんつゆ',500,'本'],['ノンオイルドレッシング',380,'本'],['いりごま',60,'袋'],['バター',200,'箱']];
 function isSeas(n){return n!=='オートミール'&&(!!SPOON[n]||SEAS.some(x=>x[0]===n))}
+/* ===== 調味料の棚：種類まで選ぶ。[名前, レシピでの呼び名, 成分表の名前, 小さじ1のg, [1本・1袋のg, 数え方]]
+   小さじ1のgは女子栄養大学「計量カップ・スプーンによる重量表」の目安（大さじ＝小さじ×3）。成分表に無い種類（岩塩・藻塩・きび砂糖）は近いものの値 ===== */
+var SHELF=[
+ ['油',[['サラダ油','サラダ油','（植物油脂類） 調合油',4,[600,'本']],['キャノーラ油','サラダ油','（植物油脂類） なたね油',4,[600,'本']],['米油','サラダ油','（植物油脂類） 米ぬか油',4,[600,'本']],['ごま油','ごま油','（植物油脂類） ごま油',4,[200,'本']],['オリーブオイル','オリーブオイル','（植物油脂類） オリーブ油',4,[400,'本']],['バター（有塩）','バター','（バター類） 無発酵バター 有塩バター',4,[200,'箱']],['バター（食塩不使用）','バター','（バター類） 無発酵バター 食塩不使用バター',4,[200,'箱']]]],
+ ['しょうゆ',[['こいくちしょうゆ','しょうゆ','＜調味料類＞ （しょうゆ類） こいくちしょうゆ',6,[500,'本']],['うすくちしょうゆ','しょうゆ','＜調味料類＞ （しょうゆ類） うすくちしょうゆ',6,[500,'本']],['減塩しょうゆ','しょうゆ','＜調味料類＞ （しょうゆ類） こいくちしょうゆ 減塩',6,[500,'本']],['たまりしょうゆ','しょうゆ','＜調味料類＞ （しょうゆ類） たまりしょうゆ',6,[500,'本']],['白しょうゆ','しょうゆ','＜調味料類＞ （しょうゆ類） しろしょうゆ',6,[500,'本']]]],
+ ['塩',[['食塩（さらさら）','塩','＜調味料類＞ （食塩類） 食塩',6,[500,'袋']],['あら塩・海塩（シーソルト）','塩','＜調味料類＞ （食塩類） 並塩',5,[500,'袋']],['岩塩','塩','＜調味料類＞ （食塩類） 食塩',5,[250,'本']],['藻塩','塩','＜調味料類＞ （食塩類） 並塩',5,[250,'袋']],['減塩タイプの塩','塩','＜調味料類＞ （食塩類） 減塩タイプ食塩 調味料不使用',6,[300,'本']],['塩こしょう','こしょう','＜調味料類＞ （食塩類） 食塩',5,[250,'本']]]],
+ ['砂糖・甘み',[['上白糖','砂糖','（砂糖類） 車糖 上白糖',3,[1000,'袋']],['三温糖','砂糖','（砂糖類） 車糖 三温糖',3,[1000,'袋']],['きび砂糖','砂糖','（砂糖類） 車糖 三温糖',3,[750,'袋']],['グラニュー糖','砂糖','（砂糖類） ざらめ糖 グラニュー糖',4,[1000,'袋']],['てんさい糖','砂糖','（砂糖類） てんさい含蜜糖',3,[650,'袋']],['黒砂糖','砂糖','（砂糖類） 黒砂糖',3,[300,'袋']],['はちみつ','はちみつ','（その他） はちみつ',7,[300,'本']]]],
+ ['みそ',[['合わせみそ（淡色）','みそ','＜調味料類＞ （みそ類） 米みそ 淡色辛みそ',6,[750,'パック']],['白みそ（甘みそ）','みそ','＜調味料類＞ （みそ類） 米みそ 甘みそ',6,[500,'パック']],['赤みそ','みそ','＜調味料類＞ （みそ類） 米みそ 赤色辛みそ',6,[500,'パック']],['麦みそ','みそ','＜調味料類＞ （みそ類） 麦みそ',6,[500,'パック']],['豆みそ（八丁みそ）','みそ','＜調味料類＞ （みそ類） 豆みそ',6,[500,'パック']],['だし入りみそ','みそ','＜調味料類＞ （みそ類） 米みそ だし入りみそ',6,[750,'パック']],['減塩みそ','みそ','＜調味料類＞ （みそ類） 減塩みそ',6,[650,'パック']]]],
+ ['酢・みりん・酒',[['穀物酢','酢','＜調味料類＞ （食酢類） 穀物酢',5,[500,'本']],['米酢','酢','＜調味料類＞ （食酢類） 米酢',5,[500,'本']],['黒酢','酢','＜調味料類＞ （食酢類） 黒酢',5,[500,'本']],['りんご酢','酢','＜調味料類＞ （食酢類） 果実酢 りんご酢',5,[500,'本']],['本みりん','みりん','＜アルコール飲料類＞ （混成酒類） みりん 本みりん',6,[500,'本']],['みりん風調味料','みりん','＜調味料類＞ （その他） みりん風調味料',6,[500,'本']],['料理酒','酒','＜調味料類＞ （その他） 料理酒',5,[1000,'本']]]],
+ ['だし・スープの素',[['顆粒和風だし','だしの素','＜調味料類＞ （だし類） 顆粒和風だし',3,[50,'袋']],['鶏がらスープの素','鶏がらスープの素','＜調味料類＞ （だし類） 顆粒中華だし',2.5,[50,'袋']],['コンソメ','コンソメ','＜調味料類＞ （だし類） 固形ブイヨン',2.5,[60,'箱']],['めんつゆ（3倍）','めんつゆ','＜調味料類＞ （だし類） めんつゆ 三倍濃縮',6,[500,'本']],['めんつゆ（2倍）','めんつゆ','＜調味料類＞ （だし類） めんつゆ 二倍濃縮',6,[500,'本']],['めんつゆ（ストレート）','めんつゆ','＜調味料類＞ （だし類） めんつゆ ストレート',6,[1000,'本']]]],
+ ['ソース・たれ',[['マヨネーズ','マヨネーズ','＜調味料類＞ （ドレッシング類） 半固体状ドレッシング マヨネーズ 全卵型',4,[350,'本']],['マヨネーズ（カロリーハーフ）','マヨネーズ','＜調味料類＞ （ドレッシング類） 半固体状ドレッシング マヨネーズタイプ調味料 低カロリータイプ',4,[300,'本']],['ケチャップ','ケチャップ','＜調味料類＞ （トマト加工品類） トマトケチャップ',5,[300,'本']],['ポン酢','ポン酢','＜調味料類＞ （調味ソース類） ぽん酢しょうゆ 市販品',6,[360,'本']],['ウスターソース','ウスターソース','＜調味料類＞ （ウスターソース類） ウスターソース',6,[300,'本']],['中濃ソース','中濃ソース','＜調味料類＞ （ウスターソース類） 中濃ソース',7,[300,'本']],['とんかつソース','とんかつソース','＜調味料類＞ （ウスターソース類） 濃厚ソース',7,[300,'本']],['オイスターソース','オイスターソース','＜調味料類＞ （調味ソース類） オイスターソース',6,[150,'本']],['焼肉のたれ','焼肉のたれ','＜調味料類＞ （調味ソース類） 焼き肉のたれ',6,[300,'本']],['ノンオイルドレッシング','ノンオイルドレッシング','＜調味料類＞ （ドレッシング類） 分離液状ドレッシング 和風ドレッシングタイプ調味料 ノンオイルタイプ',5,[380,'本']],['ごまドレッシング','ごまドレッシング','＜調味料類＞ （ドレッシング類） 乳化液状ドレッシング ごまドレッシング',5,[380,'本']]]],
+ ['粉・香辛料',[['片栗粉','片栗粉','＜でん粉・でん粉製品＞ （でん粉類） じゃがいもでん粉',3,[200,'袋']],['小麦粉（薄力粉）','小麦粉','こむぎ ［小麦粉］ 薄力粉 1等',3,[1000,'袋']],['こしょう','こしょう','＜香辛料類＞ こしょう 混合 粉',2,[20,'本']],['いりごま','いりごま','ごま いり',3,[60,'袋']],['おろししょうが（チューブ）','おろししょうが','＜香辛料類＞ しょうが おろし',5,[40,'本']],['おろしにんにく（チューブ）','おろしにんにく','＜香辛料類＞ にんにく おろし',5,[40,'本']],['豆板醤','豆板醤','＜調味料類＞ （辛味調味料類） トウバンジャン',7,[90,'本']],['カレー粉','カレー粉','＜香辛料類＞ カレー粉',2,[35,'本']]]]
+];
+SHELF.forEach(([,L])=>L.forEach(t=>{if(!SPOON[t[0]])SPOON[t[0]]=t[3];if(!SPOON[t[1]])SPOON[t[1]]=t[3]}));
+function shelfT(n){for(const [,L] of SHELF){const t=L.find(x=>x[0]===n);if(t)return t}return null}
+function shelfDef(k){for(const [,L] of SHELF){const t=L.find(x=>x[1]===k);if(t)return t}return null}
+/* 調味料の名前が入っていても調味料ではない商品（しょうゆ味のせんべい など） */
+const NOT_SEAS=/味|せんべい|あられ|チップス|ラーメン|焼そば|漬|ふりかけ|ドリンク|飲料|ジュース|菓子|クッキー|おかき/;
+/* 在庫の1品が調味料なら、レシピでの呼び名（しょうゆ・サラダ油など）を返す */
+function seasKey(s){if(!s)return null;if(s.seas)return s.seas;const t=shelfT(s.name)||(s.typ&&shelfT(s.typ));if(t)return t[1];
+  if(s.gen&&isSeas(s.gen)&&!NOT_SEAS.test(s.name))return s.gen;const b=baseN(s.name);if(isSeas(s.name))return s.name;if(isSeas(b))return b;
+  for(const k in STK_SYN)if(isSeas(k)&&STK_SYN[k].some(w=>w===s.name||w===b))return k;return null}
+function isSeasItem(s){return !!seasKey(s)}
+function shelfMigrate(){(S.stock||[]).forEach(s=>{if(!s.seas){const k=seasKey(s);if(k)s.seas=k}})}
+/* 同じ種類か（しょうゆ と キッコーマンのしょうゆ、卵 と 卵10個パック など） */
+function kindKey(name,gen){const t=shelfT(name);if(t)return t[1];if(gen&&isSeas(gen))return gen;if(isSeas(name))return name;const b=baseN(name);if(isSeas(b))return b;
+  for(const k in STK_SYN)if(STK_SYN[k].some(w=>w===name||w===b))return k;const f=findFood(gen||name);return f?f.n:(gen||b)}
+function sameKindOf(name,gen,form){const k=kindKey(name,gen);return S.stock.find(s=>(s.form||'')===(form||'')&&(s.seas===k||kindKey(s.name,s.gen||s.seas||'')===k))||null}
+const isGenericSt=s=>!!shelfT(s.name)||isSeas(s.name)||!s.per;
+/* もう同じ種類が入っていたら「同じもの？」と聞く */
+function askSame(newN,old){return new Promise(res=>{const d=$('#sameDlg');let done=false;const fin=v=>{if(done)return;done=true;d.removeEventListener('click',on);if(d.open)d.close();res(v)};
+  const cnt=!(S.seasCount===false&&isSeasItem(old));
+  $('#sameIn').innerHTML=`<h3 style="margin:0">同じもの？</h3><p style="margin:0">「<b>${esc(newN)}</b>」は、もう入っている「<b>${esc(old.name)}</b>」${cnt?`（${esc(fmtAmt(old.name,old.g,old.pu))}）`:''}と同じものですか？</p>
+   <div class="stack" style="gap:8px"><button class="btn pri" type="button" data-sa="swap">同じもの → 1つにまとめる</button><button class="btn" type="button" data-sa="add">同じもの → 量を足す（もう1つ買った）</button><button class="btn" type="button" data-sa="diff">別のもの → 両方入れる</button><button class="btn sm" type="button" data-sa="cancel">やめる</button></div>`;
+  const on=e=>{const b=e.target.closest('[data-sa]');if(b)fin(b.dataset.sa)};d.addEventListener('click',on);d.addEventListener('close',()=>fin('cancel'),{once:true});d.showModal()})}
+/* 在庫に入れる（同じ種類があれば聞いてから）。extra は gen・seas・typ など */
+async function stockIn(msg,name,g,pu,per,use,form,extra){
+  const ex=sameKindOf(name,extra&&(extra.gen||extra.seas),form);let how='new';
+  if(ex){how=await askSame(name,ex);if(how==='cancel'){toast('入れませんでした');return false}}
+  const newGeneric=!!(extra&&extra.typ)||isSeas(name);
+  undoable(how==='swap'?`「${ex.name}」と同じものとして、1つにまとめました`:how==='add'?`「${ex.name}」に量を足しました`:msg,()=>{
+    if(how==='swap'&&newGeneric&&!isGenericSt(ex)){if(extra&&extra.typ){ex.typ=extra.typ;ex.seas=extra.seas}} /* くわしい方（メーカーの商品）を残す */
+    else if(how==='add'){ex.g+= +g;if(per&&!ex.per){ex.name=name;ex.per=per;if(pu)ex.pu=pu;if(extra)Object.assign(ex,extra)}}
+    else{if(how==='swap')S.stock=S.stock.filter(x=>x!==ex);addStock(name,g,pu,per,use,form);const st=S.stock.find(x=>x.name===(per?name:((findFood(name)||{}).n||name))&&(x.form||'')===(form||''))||S.stock[S.stock.length-1];
+      if(st){if(extra)Object.assign(st,extra);if(how==='swap'&&ex.typ&&!st.typ)st.typ=ex.typ;const k=seasKey(st);if(k)st.seas=k}}
+    save();renderStock();if(typeof renderShop==='function')renderShop()});
+  return true}
+/* 調味料を棚に入れる（呼び名でも種類名でも） */
+function seasIn(key,g){const t=shelfT(key)||shelfDef(key);if(!t){const se=SEAS.find(x=>x[0]===key)||[key,100,'本'];return stockIn(`${key}を在庫に入れました`,key,g||se[1],{n:se[2],g:se[1]},null,0,'')}
+  return stockIn(`${t[0]}を調味料の棚に入れました（種類がちがえば、棚で選び直してね）`,t[0],g||t[4][0],{n:t[4][1],g:t[4][0]},exPer(t[2]),0,'',{seas:t[1],typ:t[0]})}
+async function shelfTap(n){const t=shelfT(n);if(!t)return;const h=S.stock.find(s=>s.name===n||s.typ===n);
+  if(h){undoable(`${h.name}を棚から外しました`,()=>{S.stock=S.stock.filter(x=>x!==h);save();renderStock();renderShop()});return}
+  await seasIn(n)}
+function measHTML(){const sp=SHELF.flatMap(([,L])=>L).filter((t,i,a)=>a.findIndex(z=>z[1]===t[1]&&z[3]===t[3])===i);
+  const veg=Object.entries(HAND).filter(([n])=>!/（ゆで）/.test(n)).slice(0,22);
+  const td='style="padding:3px 6px;border-bottom:1px solid var(--line)"';
+  return `<details><summary class="small"><b>量の目安（大さじ・小さじ・ひとつかみは何g？）</b></summary><div class="small stack" style="gap:8px;margin-top:6px">
+   <p class="muted" style="margin:0">大さじ1＝15ml、小さじ1＝5ml。同じ大さじ1でも、重さは調味料でちがいます。アプリはこの表で計算します。</p>
+   <table style="width:100%;border-collapse:collapse"><tr><th ${td} align="left">調味料</th><th ${td}>小さじ1</th><th ${td}>大さじ1</th></tr>${sp.map(t=>`<tr><td ${td}>${esc(t[1]===t[0]?t[0]:t[1])}</td><td ${td} align="center" class="num">${t[3]}g</td><td ${td} align="center" class="num">${t[3]*3}g</td></tr>`).join('')}</table>
+   <table style="width:100%;border-collapse:collapse"><tr><th ${td} align="left">食材</th><th ${td}>ひとつかみ</th><th ${td}>1つ（束・袋など）</th></tr>${veg.map(([n,h])=>{const u=unitOf(n);return `<tr><td ${td}>${esc(n)}</td><td ${td} align="center" class="num">約${h}g</td><td ${td} align="center" class="num">${u?`1${esc(u[0])}＝約${u[1]}g`:'–'}</td></tr>`}).join('')}</table>
+   <p class="muted" style="margin:0">ひとつかみ＝大人が片手で軽くつかんだ量。ちがう量のときは、記録のあとで数字を直してください。</p></div></details>`}
+function renderShelf(){const el=$('#seasShelf');if(!el)return;if(!stockOn()){el.hidden=true;return}el.hidden=false;
+  const cnt=S.seasCount!==false, mine=S.stock.filter(isSeasItem), has=n=>S.stock.some(s=>s.name===n||s.typ===n);
+  el.innerHTML=`<div class="row"><h2 style="margin:0">調味料の棚</h2><span class="sp"></span><span class="small muted num">${mine.length}こ</span></div>
+   <p class="small muted" style="margin:0">家にある油・しょうゆ・塩などを、種類まで押してね（もう一度押すと外す）。メーカーの商品は下の「手で追加」から入れても、ここに入ります。調味料は冷蔵庫の一覧には出しません。</p>
+   <div class="chips"><button type="button" class="chip" data-scnt="1" aria-pressed="${cnt}">量も数える（使った分へらす）</button><button type="button" class="chip" data-scnt="0" aria-pressed="${!cnt}">あるかだけ（量は数えない）</button></div>
+   <details${mine.length<5?' open':''}><summary class="small"><b>種類をえらぶ</b></summary><div class="stack" style="gap:6px;margin-top:6px">${SHELF.map(([g,L])=>`<b class="small">${esc(g)}</b><div class="chips">${L.map(t=>`<button type="button" class="chip" data-shelf="${esc(t[0])}" aria-pressed="${has(t[0])}">${esc(t[0])}</button>`).join('')}</div>`).join('')}</div></details>
+   ${mine.length?`<div class="stock">${mine.map(s=>stRow(s,!cnt)).join('')}</div>`:''}
+   ${measHTML()}`}
 /* 足りるか：調味料・ごはん・みそ汁は「ある」でOK、それ以外は量も見る */
 function enough(n,g){const s=haveStock(n);if(!s)return false;if(n==='ごはん'||n==='みそ汁'||isSeas(n))return true;return s.g>=g*0.8}
 function missOf(r){return r.ing.filter(([n,g])=>!enough(n,g)).map(([n])=>n).filter((n,i,a)=>a.indexOf(n)===i)}
@@ -2850,18 +2984,19 @@ function starterKit(){
   return {m,pick,need,seas:names.filter(isSeas),foods:names.filter(n=>!isSeas(n))};
 }
 function addKit(n,need){
+  const t=shelfDef(n); if(t){addStock(t[0],t[4][0],{n:t[4][1],g:t[4][0]},exPer(t[2]));const s=S.stock.find(x=>x.name===t[0]);if(s){s.seas=t[1];s.typ=t[0]}return}
   const se=SEAS.find(x=>x[0]===n); if(se){addStock(n,se[1],{n:se[2],g:se[1]});return}
   if(n==='ごはん'){riceFood();addStock(RICE,5000,{n:'合',g:150});return}
   const u=unitOf(n); const g=Math.max(Math.round((need||100)*2),u?u[1]:100); addStock(n,u?Math.ceil(g/u[1])*u[1]:g,u?{n:u[0],g:u[1]}:null);
 }
 function cookStageHTML(){
   if(!stockOn()) return '';
-  const st=S.cookStage, nS=SEAS.filter(([n])=>haveStock(n)).length, nF=S.stock.filter(s=>!isSeas(s.name)).length;
+  const st=S.cookStage, nS=S.stock.filter(isSeasItem).length, nF=S.stock.filter(s=>!isSeasItem(s)).length;
   const seg=`<div class="chips"><button type="button" class="chip" data-stage="have" aria-pressed="${st==='have'}">食材・調味料がもうある</button><button type="button" class="chip" data-stage="start" aria-pressed="${st==='start'}">これからそろえる</button></div>`;
   if(!st) return `<h3>自炊の準備はどのくらい？</h3><p class="small muted" style="margin:0">答えに合わせて、レシピの出し方を変えます。</p>${seg}`;
   if(st==='have') return `<details${nS>=5&&nF>=5?'':' open'}><summary><b>冷蔵庫と棚にあるものを全部入れる</b><span class="small muted num">　調味料 ${nS}・食材 ${nF}</span></summary><div class="stack" style="margin-top:8px">${seg}
    <p class="small" style="margin:0">食材だけでなく、<b>調味料も全部</b>入れてください。入っているものだけで作れるレシピを出します。</p>
-   <b class="small">調味料（あるものを押す）</b><div class="chips">${SEAS.map(([n])=>`<button type="button" class="chip" data-seas="${esc(n)}" aria-pressed="${!!haveStock(n)}">${esc(n)}</button>`).join('')}</div>
+   <p class="small" style="margin:0">調味料は、下の<b>「調味料の棚」</b>で種類まで選んでね（油・しょうゆ・塩など）。</p>
    <p class="small muted" style="margin:0">食材は「レシートで追加」か、下の「手で追加」から。</p></div></details>`;
   const K=starterKit(), T=targets(), chip=n=>{const h=haveStock(n);return `<button type="button" class="chip" data-kit="${esc(n)}" data-need="${K.need[n]}" aria-pressed="${!!h}">${esc(n)}${!h&&BUYU[n]?`<span class="muted">（${BUYU[n]}）</span>`:''}</button>`};
   const got=[...K.seas,...K.foods].filter(n=>haveStock(n)).length, all=K.seas.length+K.foods.length;
@@ -3050,8 +3185,8 @@ function showRecs(){
 function bind(){
   $$('.tab').forEach(b=>b.addEventListener('click',()=>go(b.dataset.v)));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-ox],[data-cand],[data-swap],[data-swapc],[data-swapgo],[data-addx],[data-smenu],[data-smenugo],[data-other],[data-othergo],[data-cook],[data-rt],[data-stage],[data-seas],[data-kit]');if(!t)return;
-    if(t.dataset.plan){planShift++;renderHome()}
+    const t=e.target.closest('[data-drink],[data-mine],[data-myeat],[data-myrm],[data-open],[data-delask],[data-delno],[data-day],[data-plan],[data-pe],[data-go],[data-del],[data-rm],[data-eat],[data-use],[data-dec],[data-stdel],[data-stclear],[data-stedit],[data-stsave],[data-sz],[data-ox],[data-cand],[data-swap],[data-swapc],[data-swapgo],[data-addx],[data-smenu],[data-smenugo],[data-other],[data-othergo],[data-cook],[data-rt],[data-stage],[data-seas],[data-kit],[data-shelf],[data-scnt]');if(!t)return;
+    if(t.dataset.plan){const b=planSig();let k=0;do{planShift++;k++}while(k<12&&planSig()===b);planOpen=true;renderHome();toast(planSig()===b?'ほかの案がありません（在庫を足すと、案が増えます）':'別の案にしました')}
     if(t.dataset.pe){const T=targets(),d=S.ans.deep,k=['bf','lunch','dn'][+t.dataset.pe],x=planAll(T,d,dayNum()+planShift)[+t.dataset.pe];if(x&&x.it){const ml={bf:'朝',lunch:'昼',dn:'夜'}[k];if(x.it.cook)useFromStock(x.it.ing.map(([name,g])=>({name,g})));addLog(ml,x.it.n,x.it.ing.map(([name,g])=>({name,g})));toast(`${x.it.n}を記録しました`)}}
     if(t.dataset.go) go(t.dataset.go);
     if(t.dataset.drink){const [di,si]=t.dataset.drink.split('|').map(Number),d=DRK[di],z=dSize(d,si),inf=logDrink(d.n,z.l,z.items,z.ml,!d.alc);toast(drinkMsg(d,si,inf))}
@@ -3094,7 +3229,9 @@ function bind(){
     if(t.dataset.stsave){const st=S.stock.find(x=>x.id===t.dataset.stsave),U=st&&stU(st),v=+$('#stEditV').value;if(!st)return;
       if($('#stEditV').value===''||!(v>=0)){toast('数を入れてください');return}if(v>stMax(U[0])){toast(`数が大きすぎます（${stMax(U[0])}まで）`);return}
       stEdit=null;undoable(v===0?`${st.name}を消しました`:`${st.name}を${r1(v)}${U[0]}に直しました`,()=>{if(v===0)S.stock=S.stock.filter(x=>x.id!==st.id);else st.g=v*U[1];save();renderStock()})}
-    if(t.dataset.stclear){undoable('冷蔵庫を空にしました',()=>{S.stock=[];save();renderStock()})}
+    if(t.dataset.stclear){undoable('冷蔵庫を空にしました（調味料の棚はそのまま）',()=>{S.stock=S.stock.filter(isSeasItem);save();renderStock()})}
+    if(t.dataset.shelf){shelfTap(t.dataset.shelf)}
+    if(t.dataset.scnt){S.seasCount=t.dataset.scnt==='1';save();renderStock();toast(S.seasCount?'調味料も、使った分をへらします':'調味料は「あるかだけ」にしました（量は数えません）')}
     if(t.dataset.dec){const st=S.stock.find(x=>x.id===t.dataset.dec);undoable(`${st?st.name:''}を1つへらしました`,()=>useStock(t.dataset.dec,false))}
     if(t.dataset.cook){const k=t.dataset.cook;const r=k[0]==='a'?AIREC[+k.slice(1)]:RECIPES[+k.slice(1)];if(!r)return;const sv=document.querySelector(`[data-serv="${k}"]`),n=sv?+sv.value:1;undoable(`${r.n}を記録しました（在庫からも引きました）`,()=>{useFromStock(r.ing.map(([name,g])=>({name,g:g*n})));addLog(mealNow(),r.n,r.ing.map(([name,g])=>({name,g})))});renderRecipes();renderStock();renderShop()}
     if(t.dataset.rt){rTag=t.dataset.rt;renderRecipes()}
@@ -3118,9 +3255,10 @@ function bind(){
       if(q.dataset.cq==='self')c.self=v==='1';if(q.dataset.cq==='n')c.n=+v;if(q.dataset.cq==='all')c.all=v==='1';applyCook();renderResult();return}});
   $('#result').addEventListener('change',e=>{if(!pending||!pending.use)return;
     if(e.target.dataset.uon!==undefined){pending.use[+e.target.dataset.uon].on=e.target.checked;renderResult()}
+    if(e.target.dataset.exon!==undefined){pending.exOff=pending.exOff||{};pending.exOff[e.target.dataset.exon]=!e.target.checked;renderResult()}
     if(e.target.dataset.ug!==undefined){pending.use[+e.target.dataset.ug].g=(+e.target.value||0)*(+e.target.dataset.u||1);renderResult()}});
   $('#result').addEventListener('click',e=>{if(e.target.id!=='commit')return;
-    if(mode==='meal'){const day=$('#mealDate').value||TODAY;if(pending.cook&&pending.cook.self&&pending.use){useFromStock(pending.use.filter(u=>u.on));const k=pending.use.filter(u=>u.on).length;if(k)setTimeout(()=>toast(`在庫から${k}品へらしました`),2700)}addLog($('#mealSel').value,pending.title||'写真の食事',pending.items.filter(i=>i.g>0),day);if($('#saveMy')&&$('#saveMy').checked){S.my=S.my||[];S.my.push({id:uid(),name:pending.title||pending.items.map(i=>i.name).join('・'),items:JSON.parse(JSON.stringify(pending.items.filter(i=>i.g>0)))});save();renderMy()}toast(day===TODAY?'今日の記録に入れました':`${+day.slice(5,7)}/${+day.slice(8)}の記録に入れました`);if(!queue.length)go('home')}
+    if(mode==='meal'){const day=$('#mealDate').value||TODAY;if(pending.cook&&pending.cook.self&&pending.use){const UL=[...pending.use.filter(u=>u.on),...exUse().filter(u=>u.on)];useFromStock(UL);const k=UL.length;if(k)setTimeout(()=>toast(`在庫から${k}品へらしました`),2700)}addLog($('#mealSel').value,pending.title||'写真の食事',pending.items.filter(i=>i.g>0),day);if($('#saveMy')&&$('#saveMy').checked){S.my=S.my||[];S.my.push({id:uid(),name:pending.title||pending.items.map(i=>i.name).join('・'),items:JSON.parse(JSON.stringify(pending.items.filter(i=>i.g>0)))});save();renderMy()}toast(day===TODAY?'今日の記録に入れました':`${+day.slice(5,7)}/${+day.slice(8)}の記録に入れました`);if(!queue.length)go('home')}
     else{pending.items.forEach(i=>i.g>0&&addStock(i.name,i.g,i.pf&&i.ug?{n:'個',g:i.ug,...(i.nw?{nw:1}:{})}:null,i.pf?i.per:null));save();toast('在庫に入れました');go('stock')}
     $('#result').hidden=true;$('#snapStatus').textContent='';if(queue.length)nextPhoto();else{$('#prev').hidden=true;photo=null;$('#photo').value=''}});
   $$('.seg button').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
@@ -3143,6 +3281,11 @@ function bind(){
   $('#photoBox').addEventListener('change',e=>{if(e.target.id==='phIn'&&e.target.files[0])addBodyPhoto(e.target.files[0])});
   $('#photoBox').addEventListener('click',photoClick);
   $('#chatBtn').addEventListener('click',()=>askCoach($('#chatIn').value));
+  $('#chatLog').addEventListener('click',e=>{const a=e.target.closest('[data-capply],[data-cadj],[data-cok],[data-cundo]');if(!a)return;
+    if(a.dataset.capply){const m=S.chat[+a.dataset.capply];coachApply(m);renderChat();renderHome();renderStock();toast('在庫から引いて、記録に入れました。量を確認してね')}
+    if(a.dataset.cadj){const [i,j,d]=a.dataset.cadj.split('|').map(Number);cAdj(i,j,d)}
+    if(a.dataset.cok){const m=S.chat[+a.dataset.cok];if(m&&m.ap){m.ap.ok=true;save();renderChat()}}
+    if(a.dataset.cundo)cUndo(+a.dataset.cundo)});
   document.addEventListener('click',e=>{if(e.target.id==='undoBtn')doUndo()});
   $$('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
   $('#invSave').addEventListener('click',async()=>{const v=$('#invCode').value.normalize('NFKC').toLowerCase().replace(/\s+/g,'').replace(/[ー‐‑–—―−ｰ_]/g,'-');if(!v){toast('招待コードを入れてから「保存」を押してください');return}try{localStorage.setItem(INV,v)}catch(e){}appAI();
@@ -3194,10 +3337,10 @@ function bind(){
   $('#bcShot').addEventListener('change',async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;toast('バーコードを読んでいます…');
     const code=await bcFromImage(f);if(!code){toast('バーコードが読めませんでした。線が画面いっぱいになるように、近づけて撮ってください');return}
     const r=await bcFind(code);if(!r){toast(`この商品（${code}）は見つかりませんでした。名前で入れてください`);$('#stText').focus();return}
-    const it=bcItem(r);undoable(`${it.name}${it.sz?`（${it.sz}）`:''}を在庫に入れました（バーコード）`,()=>{addStock(it.name,it.g,{n:it.un,g:it.ug},it.per,0,'');const s=S.stock.find(x=>x.name===it.name),gen=genOf(it.name);if(s&&gen)s.gen=gen;save();renderStock();renderShop()})});
+    const it=bcItem(r),gen=genOf(it.name);stockIn(`${it.name}${it.sz?`（${it.sz}）`:''}を在庫に入れました（バーコード）`,it.name,it.g,{n:it.un,g:it.ug},it.per,0,'',gen?{gen}:null)});
   $('#stSug').addEventListener('click',e=>{const z=e.target.closest('[data-psz]'),p=e.target.closest('[data-prod]'),g=e.target.closest('[data-sgen]');
     const fd=e.target.closest('[data-sfood]');if(fd){const P=stParse($('#stText').value);$('#stText').value=fd.dataset.sfood+(P.v!=null?` ${P.v}${P.un||''}`:'');$('#stSug').hidden=true;stAddLine();return}
-    if(g){const se=SEAS.find(x=>x[0]===g.dataset.sgen);undoable(`${se[0]}を在庫に入れました`,()=>{addStock(se[0],se[1],{n:se[2],g:se[1]});save();renderStock();renderShop()});$('#stText').value='';$('#stSug').hidden=true;return}
+    if(g){seasIn(g.dataset.sgen);$('#stText').value='';$('#stSug').hidden=true;return}
     const w=e.target.closest('[data-wprod]');if(w){addWorld(WLAST[+w.dataset.wprod]);return}
     if(p)addProd(PROD[+p.dataset.prod],z?z.dataset.psz:null)});
   $('#stSug').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.prod&&!e.target.dataset.psz){e.preventDefault();addProd(PROD[+e.target.dataset.prod])}});
@@ -3286,5 +3429,5 @@ fillList('');
 bind();setMode('meal');$('#mealSel').value=mealNow();renderHome();connect();
 </script>
 
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610061101').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js?v=202610061305').catch(()=>{}));</script>
 </body></html>
